@@ -77,11 +77,8 @@ EconomyTest is a complete, yet easy-to-understand, server-side economy mod for B
 * **Edit Text:** All server messages can be changed by editing the JSON files in `/Resources/Server/EconomyTest/lang/`.
 * **Add a Language:** To add a new language, create a new `.json` file (e.g., `fr.json`), add it to the `SUPPORTED_LANGS` list in `main.lua`, and add a corresponding UI translation in the client files `EconomyUI.zip\ui\modules\apps\EconomyHUD\translations`.
 
-## Tips and Gameplay Mechanics
-
-*  **What's my role?** Your role is determined automatically by your vehicl. If you get into a car with a police skin from the `PoliceSkins` list, you become a police officer. Otherwise, you are a civilian.
-*  **How does the speeding bonus work?** As a civilian, drive faster than the `SPEED_LIMIT_KMH` (100 km/h by default).
-*  **Using the UI:** Click the "💰 Open" button on your screen to view your balance panel.  Click the globe icon (🌐) to open the language menu and change the UI's language instantly.
+## UI
+*  Click the "💰 Open" button on your screen to view your balance panel.  Click the globe icon (🌐) to open the language menu and change the UI's language instantly.
 *  Note: Sometimes immediately upon entering the server the UI will display: 0:00 on the screen but it will update immediately when the player's money amount changes. This is a timing issue that any professional developer can easily solve.
 
 ## Mod Architecture
