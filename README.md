@@ -93,3 +93,11 @@ This mod is split into three distinct parts, which is a common and effective pat
 ## Acknowledgments
 
 Special thanks to **Beams Of Norway** who brought me the code to test the speed
+
+## License
+© 2025 5DROR5
+
+You are free to use, modify, and distribute this mod for any purpose, including commercial use, 
+as long as you give credit to the original author (5DROR5).  
+
+No warranty is provided.
