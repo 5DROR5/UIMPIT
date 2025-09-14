@@ -20,6 +20,8 @@ Resources/Client/
 3. Restart your BeamMP server.
 
 ---
+![EconomyTest UI](2025-09-15_02-10.png)
+---
 
 # Overview
 
