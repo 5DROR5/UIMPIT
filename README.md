@@ -43,7 +43,7 @@ The structure is clear and designed for easy extension.
 
 ---
 
-# Detailed Overview and Guide
+# Detailed Overview
 
 This document provides a comprehensive overview of the EconomyTest mod, its features, and how to use and configure it. It's designed for players, server administrators, and aspiring developers who want to learn from the code.
 
