@@ -83,6 +83,60 @@ EconomyTest is a complete, yet easy-to-understand, server-side economy mod for B
 *  Click the "💰 Open" button on your screen to view your balance panel.  Click the globe icon (🌐) to open the language menu and change the UI's language instantly.
 *  Note: Sometimes immediately upon entering the server the UI will display: 0:00 on the screen but it will update immediately when the player's money amount changes. This is a timing issue that any professional developer can easily solve.
 
+## 🎨 Custom CSS Themes
+
+The UI now supports multiple visual styles!  
+You can choose between different CSS themes to customize the look of the HUD.  
+
+Each theme is packaged as a separate ZIP file in the [Releases](../../releases) section.  
+Inside each ZIP you'll find an `app.css` file – just replace the one inside `EconomyUI.zip` with the version you want.
+
+---
+
+### Available Themes
+
+#### 1. Classic (Default)
+The original clean design.
+
+![Classic](Classic-Default.png)
+
+---
+
+#### 2. Bar Style
+A modern bar-style HUD.
+
+![Bar](bar.png)
+
+**Download:** [EconomyUI-css-Bar-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-Bar-1.0.0.zip)
+
+---
+
+#### 3. CRT Retro
+A vintage CRT monitor look.
+
+![CRT](CRT.png)
+
+**Download:** [EconomyUI-css-CRT-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-CRT-1.0.0.zip)
+
+---
+
+#### 4. Round Design
+Smooth rounded panels for a softer look.
+
+![Round](round.png)
+
+**Download:** [EconomyUI-css-round-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-round-1.0.0.zip)
+
+---
+
+### 🔧 How to Apply a Theme
+1. Download the ZIP file of your preferred theme.  
+2. Open the ZIP and extract the `app.css` file.  
+3. Replace the existing `app.css` inside `EconomyUI.zip\ui\modules\apps\EconomyHUD\`.  
+4. Restart the game/server and enjoy your new style!
+
+---
+
 ## Mod Architecture
 
 This mod is split into three distinct parts, which is a common and effective pattern:
