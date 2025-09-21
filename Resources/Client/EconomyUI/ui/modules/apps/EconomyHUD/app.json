@@ -1,0 +1,17 @@
+{
+  "domElement": "<economy-hud></economy-hud>",
+  "name": "Economy HUD",
+  "types": [
+    "ui.apps.categories.debug"
+  ],
+  "description": "Economy HUD app",
+  "css": {
+    "right": "20px",
+    "top": "20px",
+    "width": "320px",
+    "height": "300px"
+  },
+  "author": "Your Name",
+  "version": "0.1",
+  "directive": "economyHud"
+}
