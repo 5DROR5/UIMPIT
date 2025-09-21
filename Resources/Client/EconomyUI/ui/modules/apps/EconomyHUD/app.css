@@ -1,0 +1,150 @@
+/*
+    This CSS file styles the Economy HUD defined in app.html.
+    It controls the layout, colors, fonts, and animations of the UI.
+*/
+
+/* Basic setup for the font and background */
+body, .economy-app-root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  color: #ecf0f1; /* A light grey color for text */
+  width: 100%;
+  height: 100%;
+}
+
+/* Styles for the "Open/Close" toggle button */
+.economy-ui-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #34495e; /* A dark blue-grey background */
+  color: white;
+  padding: 8px 15px;
+  border-radius: 8px; /* Rounded corners */
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.9em;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* A subtle drop shadow */
+  z-index: 1001; /* Ensures the button is above the main panel */
+  transition: background 0.3s ease, transform 0.2s; /* Smooth transitions for hover effects */
+}
+/* A simple scale and color change effect when hovering over the button */
+.economy-ui-toggle:hover { 
+  transform: scale(1.05); 
+  background: #2c3e50; 
+}
+
+/* Styles for the main UI panel that shows the balance */
+.economy-ui-container {
+  position: absolute;
+  top: 60px; /* Positioned below the toggle button */
+  right: 10px;
+  width: 280px;
+  background: rgba(25,25,35,0.7); /* A semi-transparent dark background */
+  backdrop-filter: blur(8px); /* Creates a "frosted glass" effect */
+  border-radius: 16px; /* More rounded corners */
+  padding: 20px;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.5); /* A larger shadow to make it pop */
+  color: #ecf0f1;
+  z-index: 1000;
+  /* Initial state for the animation (hidden) */
+  transform: scale(0.95) translateY(-20px);
+  opacity: 0;
+  /* Defines the animation for opacity and transform changes */
+  transition: all 0.25s ease;
+}
+/* The state when the UI is visible */
+.economy-ui-container.open { 
+  transform: scale(1) translateY(0); 
+  opacity: 1; 
+}
+/* The state when the UI is hidden (this is also the initial state) */
+.economy-ui-container.closed { 
+  transform: scale(0.95) translateY(-20px); 
+  opacity: 0; 
+}
+
+/* Styles for the header text (e.g., "Balance") */
+.economy-header h1 {
+  text-align: center;
+  font-size: 1.5rem;
+  color: #00e6ac; /* A bright teal color */
+  margin-bottom: 15px;
+  text-shadow: 0 0 6px rgba(0,230,172,0.7); /* A glow effect */
+}
+
+/* Styles for the balance number display */
+.balance-display {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+}
+.balance-display .currency-symbol { 
+  margin-right: 6px; 
+  font-weight: bold; 
+  color: #1abc9c; /* Another shade of teal */
+}
+.balance-display .current-balance { 
+  font-weight: bold; 
+  color: #ffffff;
+  text-shadow: 0 0 6px rgba(0,255,200,0.7); /* A glow effect for the number */
+}
+
+/* Positioning for the language selection elements */
+.language-wrapper { 
+  position: absolute; 
+  top: 10px; 
+  left: 10px; 
+}
+.language-icon { 
+  font-size: 1.5rem; 
+  cursor: pointer; 
+  transition: transform 0.2s; 
+}
+.language-icon:hover { 
+  transform: scale(1.2); /* Makes the icon bigger on hover */
+}
+
+/* Styles for the language selection dropdown menu */
+.language-menu {
+  position: absolute;
+  top: 120%;
+  left: 0;
+  background: rgba(30,30,40,0.95); /* A very dark, semi-transparent background */
+  border-radius: 10px;
+  padding: 5px;
+  list-style: none; /* Removes bullet points */
+  min-width: 50px;
+  box-shadow: 0 6px 12px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  /* Initial animation state (hidden) */
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none; /* Prevents clicks when hidden */
+  transition: all 0.2s ease;
+}
+/* The state when the language menu is visible */
+.language-menu.open { 
+  opacity: 1; 
+  transform: translateY(0); 
+  pointer-events: auto; /* Allows clicks when visible */
+}
+
+/* Styles for the individual language items (flags) in the menu */
+.language-menu li {
+  margin: 3px 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  font-size: 1.4rem;
+  transition: transform 0.2s;
+}
+.language-menu li:hover { 
+  transform: scale(1.2); /* Enlarge on hover */
+}
