@@ -22,5 +22,13 @@
     "caught": "Officer ${cop} caught criminal ${criminal} and received $500.",
     "speeding_fine": "You were fined $${50} for speeding (${speed} km/h). Limit is ${limit} km/h.",
     "speed_bonus_start": "You are now receiving a speeding bonus!",
-    "speed_bonus_end": "Great! You outran the police and earned $1 per second and a bonus of $50"
+    "speed_bonus_end": "Great! You outran the police and earned $1 per second and a bonus of $50",
+    "speed_bonus_prorated_end": "Your speed bonus has been cancelled. You received ${amount}$ for the time you accumulated.",
+    "speed_bonus_cancelled": "Your speed bonus has been cancelled (${reason}).",
+    "reason_vehicle_reset": "because you reset your vehicle",
+    "reason_vehicle_edited": "because you modified your vehicle",
+    "reason_change_vehicle": "because you changed vehicle",
+    "reason_player_left": "because you left the server",
+    "zigzag_bonus_start": "Zigzag grants you a cash bonus! Keep moving to earn.",
+    "zigzag_bonus_end": "The zigzag bonus has ended! You received an extra $50."
 }
