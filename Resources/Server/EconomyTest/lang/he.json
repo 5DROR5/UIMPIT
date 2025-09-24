@@ -22,5 +22,13 @@
   "added_money_per_minute": "הרווחת 10$ על היותך שחקן מגניב! היתרה החדשה שלך היא: ${money}",
   "police_alert_speeding": "התראה! ${name} נוסע במהירות מופרזת של ${speed} קמ\"ש.",
   "speed_bonus_start": "התחלת לקבל בונוס על נהיגה מהירה!",
-  "speed_bonus_end": "נהדר! חמקת מהמשטרה קיבלת שכר של דולר לשניה ובונוס של 50 דולר"
+  "speed_bonus_end": "נהדר! חמקת מהמשטרה קיבלת שכר של דולר לשניה ובונוס של 50 דולר",
+  "speed_bonus_prorated_end": "בונוס המהירות שלך בוטל. קיבלת ${amount}$ על הזמן שצברת.",
+  "speed_bonus_cancelled": "בונוס המהירות שלך בוטל (${reason}).",
+  "reason_vehicle_reset": "בגלל שאיפסת את הרכב שלך",
+  "reason_vehicle_edited": "בגלל ששינית את הרכב שלך",
+  "reason_change_vehicle": "בגלל שהחלפת רכב",
+  "reason_player_left": "בגלל שעזבת את השרת",
+  "zigzag_bonus_start": "זיגזג מזכה בבונוס כספי! הישאר בתנועה כדי להרוויח.",
+  "zigzag_bonus_end": "בונוס הזיגזג הסתיים! קיבלת 50$ נוספים."
 }
