@@ -1,4 +1,4 @@
-# beammp-mod-UI
+# UIMPIT
 Initial release of the mod
 ## Important clarification!
 Indeed, the mod I'm posting works perfectly fine, but I'm not a professional programmer - I relied heavily on artificial intelligence [after training it to code according to the nuances of BeamMP]. So don't look at this as an example of "perfect programming", I'm almost certain there are cleaner and more efficient methods to code this.
