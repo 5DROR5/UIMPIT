@@ -1,93 +1,333 @@
 --[[
-    EconomyTest Server-Side Script
+    UIMPIT Server-Side Script
     Author: 5DROR5
-    Version: 1.1
+    Version: 1.3.0
     Description: This script manages the entire server-side economy system,
     including player accounts, money, roles, chat commands, and timed events.
+    This version is adapted to load all its settings from config.json.
 ]]
 
--- =============================================================================
--- || CONSTANTS & INITIAL TABLES                                             ||
--- =============================================================================
-
--- Plugin identifier used in log output so we can find messages from this module easily.
 local PLUGIN = "[EconomyTest]"
-
--- Table for storing zigzag cooldown timestamps per player (keyed by PID).
-local zigzag_cooldowns = {}
-
--- Load the math module and create local shortcuts for rad/deg conversions to make
--- subsequent code shorter and clearer.
 local math = require("math")
 local rad = math.rad
 local deg = math.deg
 
--- Try to require a JSON module in a protected call so the script doesn't crash if
--- the runtime doesn't provide a json library. If requiring fails, json becomes nil
--- and the code uses other fallbacks.
 local ok_json, json = pcall(require, "json")
 if not ok_json then json = nil end
 
--- Default language code and the list of supported language codes. These are used
--- when selecting translations for messages sent to players.
 local DEFAULT_LANG = "en"
 local SUPPORTED_LANGS = { "he", "en", "ar" }
 
--- Paths used by the script. If you move the resource folder, update ROOT.
 local ROOT = "Resources/Server/EconomyTest"
 local LANG_DIR = ROOT.. "/lang"
 local ACCOUNTS_FILE = ROOT.. "/Data/players.DATA"
-
--- External list of police skins. This file should return a table of skin names.
+local CONFIG_FILE = ROOT.. "/config.json"
 local PoliceSkins = require("PoliceSkins")
 
--- ======= Timers / configurable defaults (change these to tune behavior) ======
--- Autosave interval in milliseconds. Default: 120000ms = 2 minutes.
-local AUTOSAVE_INTERVAL_MS = 120000       
--- Interval for sending a periodic "cool" message to players. Default: 30s.
-local COOL_MESSAGE_INTERVAL_MS = 30000    
--- Interval used to add money periodically (in ms). Default: 60s.
-local MONEY_PER_MINUTE_INTERVAL = 60000   
--- Amount granted each MONEY_PER_MINUTE_INTERVAL tick. Default: 10.
-local MONEY_PER_MINUTE_AMOUNT = 10        
--- How often we attempt to send the welcome message (used to wait for UI ready).
-local WELCOME_CHECK_INTERVAL = 500        
--- Main combined update loop interval in milliseconds — runs checks such as
--- speeding and zigzag detection. Default: 1000ms (1 second).
-local COMBINED_CHECK_INTERVAL = 1000      
--- Speed threshold in km/h for considering a vehicle to be "speeding".
-local SPEED_LIMIT_KMH = 100               
--- Minimum cooldown between speeding events per-player (milliseconds).
-local SPEEDING_COOLDOWN_MS = 120000       
+local config = {}
 
--- Runtime tables used to track bonuses, translations, accounts, and states.
-local speeding_cooldowns = {} 
-local speeding_bonuses = {}  
-local translations = {}      
-local accounts = {}          
+local WELCOME_CHECK_INTERVAL = 500
+local COMBINED_CHECK_INTERVAL = 1000
+
+local translations = {}
+local accounts = {}
 local players_awaiting_welcome_sync = {}
-local zigzag_bonuses = {}        
-local zigzag_last_angle = {}     
-local zigzag_last_direction = {} 
-local player_zigzag_state = {} 
 
--- Zigzag-specific configuration. Tweak these to make the zigzag bonus easier
--- or harder to obtain, or to change payout behavior.
-local ZIGZAG_BONUS_DURATION_MS = 120000   -- How long the zigzag bonus lasts (ms).
-local ZIGZAG_COOLDOWN_MS = 60000         -- Additional cooldown after a zigzag finishes.
-local ZIGZAG_FINAL_BONUS_AMOUNT = 50     -- Lump-sum final reward at end of zigzag run.
-local MIN_SPEED_KMH_FOR_ZIGZAG = 10       -- Minimum speed to consider zigzag detection.
-local ZIGZAG_MIN_TURNS = 5               -- How many alternating turns constitute a zigzag.
-local ZIGZAG_MIN_DELTA_ANGLE = math.rad(1) -- Minimum angle change between samples (radians).
-local ZIGZAG_PRORATED_BONUS = 5          -- Amount per second paid while running the zigzag bonus.
+local speeding_cooldowns = {}
+local speeding_bonuses = {}
+local zigzag_bonuses = {}
+local zigzag_cooldowns = {}
+local player_zigzag_state = {}
+local busted_timers = {}
+local wanted_timers = {}
 
--- =============================================================================
--- || HELPER MATH / SMALL UTILITIES                                          ||
--- =============================================================================
+local last_sent_wanted = {}
 
--- atan2 implementation: Lua's math library doesn't always provide atan2, so we
--- implement a robust version that returns angle in radians in range [-pi, pi].
--- Inputs: y (vertical component), x (horizontal component).
+local function log(msg)
+    print(PLUGIN.. " ".. tostring(msg))
+end
+
+local function file_exists(path)
+    local f = io.open(path, "r")
+    if f then f:close() return true end
+    return false
+end
+
+local function safe_read(path)
+    local f = io.open(path, "r")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+local function safe_write(path, content)
+    local f = io.open(path, "w+")
+    if not f then
+        log("ERROR: Could not open file for writing: ".. path)
+        return false
+    end
+    local ok, err = pcall(f.write, f, content)
+    f:close()
+    if not ok then
+        log("ERROR writing file ".. path.. ": ".. tostring(err))
+        return false
+    end
+    return true
+end
+
+local function encode_json(tbl)
+    if type(tbl) ~= "table" then return nil end
+    if type(Util) == "table" and Util.JsonEncode then
+        local ok, s = pcall(Util.JsonEncode, tbl)
+        if ok and type(s) == "string" then return s end
+    end
+    if json and json.encode then
+        local ok, s = pcall(json.encode, tbl)
+        if ok and type(s) == "string" then return s end
+    end
+    if tbl.money ~= nil then
+        return '{"money":'.. tostring(tbl.money).. '}'
+    end
+    return nil
+end
+
+local function decode_json(str)
+    if type(str) ~= "string" then return nil end
+    if type(Util) == "table" and Util.JsonDecode then
+        local ok, t = pcall(Util.JsonDecode, str)
+        if ok and type(t) == "table" then return t end
+    end
+    if json and json.decode then
+        local ok, t = pcall(json.decode, str)
+        if ok and type(t) == "table" then return t end
+    end
+    return nil
+end
+
+local function json_load(path)
+    local s = safe_read(path)
+    if not s or s == "" then return {} end
+
+    local ok, tbl = pcall(function() return decode_json(s) end)
+    if ok and type(tbl) == "table" then return tbl end
+
+    log("ERROR decoding JSON from ".. path.. ": ".. tostring(tbl))
+    if FS and FS.Remove then pcall(FS.Remove, path) end
+    return {}
+end
+
+local function atomic_json_save(path, tbl)
+    local s = encode_json(tbl)
+    if not s then
+        log("ERROR encoding JSON for ".. path)
+        return false
+    end
+    local temp_path = path.. ".tmp"
+    if not safe_write(temp_path, s) then return false end
+
+    if FS and FS.Rename then
+        local ok, err = pcall(FS.Rename, temp_path, path)
+        if not ok then
+            pcall(FS.Remove, temp_path)
+            log("ERROR renaming temp file: ".. tostring(err))
+            return false
+        end
+        return true
+    else
+        return safe_write(path, s)
+    end
+end
+
+local function load_config()
+    local defaults = {
+        features = {
+            roleplay_enabled = true, money_per_minute_enabled = true, cool_message_enabled = true,
+            speeding_bonus_enabled = true, zigzag_bonus_enabled = true, police_features_enabled = true
+        },
+        general = {autosave_interval_ms = 120000},
+        money = {
+            money_per_minute_interval_ms = 60000, money_per_minute_amount = 10,
+            starting_money = 3333, cool_message_interval_ms = 30000
+        },
+        civilian = {
+            speeding_limit_kmh = 100, speeding_bonus_duration_ms = 60000, speeding_cooldown_ms = 200000,
+            speeding_bonus_per_second = 1, zigzag_bonus_duration_ms = 120000, zigzag_cooldown_ms = 200000,
+            zigzag_final_bonus_amount = 50, zigzag_prorated_bonus = 5, min_speed_kmh_for_zigzag = 10,
+            zigzag_min_turns = 5, wanted_fail_penalty = 50
+        },
+        police = {
+            police_proximity_range_m = 150, busted_range_m = 20, busted_stop_time_ms = 7000,
+            busted_speed_limit_kmh = 5, police_bonus_per_second = 2, bust_bonus_amount = 100
+        }
+    }
+
+    local loaded_config = {}
+    if file_exists(CONFIG_FILE) then
+        loaded_config = json_load(CONFIG_FILE) or {}
+    else
+        log("WARNING: config.json not found. Using internal default values.")
+    end
+
+    for category, fields in pairs(defaults) do
+        config[category] = config[category] or {}
+        if type(fields) == "table" then
+            for key, value in pairs(fields) do
+                if loaded_config[category] and loaded_config[category][key] ~= nil then
+                    config[category][key] = loaded_config[category][key]
+                else
+                    config[category][key] = value
+                end
+            end
+        end
+    end
+    log("Configuration loaded successfully.")
+end
+
+
+local function load_lang_file(code)
+    local path = LANG_DIR.. "/".. code.. ".json"
+    if not file_exists(path) then return nil end
+    return json_load(path)
+end
+
+local function load_all_langs()
+    translations = {}
+    for _, code in ipairs(SUPPORTED_LANGS) do
+        translations[code] = load_lang_file(code) or {}
+    end
+    log("Loaded languages: ".. table.concat(SUPPORTED_LANGS, ", "))
+end
+
+local function getUID(pid)
+    local ids = {}
+    if MP and MP.GetPlayerIdentifiers then
+        ids = MP.GetPlayerIdentifiers(pid) or {}
+    end
+    return ids.beammp or ids.steam or ids.license or ("pid:".. tostring(pid))
+end
+
+local function getPlayerNameSafe(pid)
+    if MP and MP.GetPlayerName then
+        local ok, name = pcall(MP.GetPlayerName, pid)
+        return ok and name or ("Player".. tostring(pid))
+    end
+    return ("Player".. tostring(pid))
+end
+
+local function get_player_lang(pid)
+    local uid = getUID(pid)
+    return (accounts[uid] and accounts[uid].lang) or DEFAULT_LANG
+end
+
+local function tr_for_pid(pid, key, vars)
+    local lang = get_player_lang(pid)
+    local text = (translations[lang] or {})[key] or key
+    if vars then
+        for k,v in pairs(vars) do
+            text = text:gsub("${".. k.. "}", tostring(v))
+        end
+    end
+    return text
+end
+
+local function ensure_account_for_pid(pid)
+    local uid = getUID(pid)
+    if not accounts[uid] then
+        accounts[uid] = { money = config.money.starting_money, lang = DEFAULT_LANG, role = "civilian" }
+    end
+    return uid
+end
+
+local function get_money(uid)
+    return (accounts[uid] and accounts[uid].money) or 0
+end
+
+local function add_money(uid, amt)
+    amt = tonumber(amt) or 0
+    accounts[uid] = accounts[uid] or { money = 0, lang = DEFAULT_LANG, role="civilian" }
+    accounts[uid].money = math.max(0, (accounts[uid].money or 0) + amt)
+end
+
+local function load_accounts()
+    accounts = file_exists(ACCOUNTS_FILE) and json_load(ACCOUNTS_FILE) or {}
+    local count = 0
+    for _,_ in pairs(accounts) do count = count + 1 end
+    log("Loaded accounts: ".. tostring(count))
+end
+
+local function save_accounts()
+    atomic_json_save(ACCOUNTS_FILE, accounts)
+end
+
+local function sendTo(pid, msg)
+    if MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid) then
+        local ok, err = pcall(MP.SendChatMessage, pid, msg)
+        if not ok then log("ERROR sending message to ".. tostring(pid).. ": ".. tostring(err)) end
+    end
+end
+
+local function sendAll(msg)
+    for pid,_ in pairs(MP.GetPlayers() or {}) do sendTo(pid, msg) end
+end
+
+local function sendEconomyUIUpdate(pid)
+    if not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
+    local uid = getUID(pid)
+    local playerData = accounts[uid]
+    if not playerData then return end
+
+    local payload_tbl = { money = tonumber(playerData.money) or 0 }
+    local payload_str = encode_json(payload_tbl)
+
+    if not payload_str then
+        payload_str = tostring(payload_tbl.money)
+    end
+
+    if not payload_str then
+        log("[EconomyUI]: ERROR generating payload for PID=".. tostring(pid))
+        return
+    end
+
+    local ok, err = pcall(function()
+        MP.TriggerClientEvent(pid, "receiveMoney", payload_str)
+    end)
+    if ok then
+        log("[EconomyUI]: Sent UI update for PID: ".. tostring(pid).. " payload=".. tostring(payload_str))
+    else
+        log("[EconomyUI]: ERROR sending UI update PID=".. tostring(pid).. " err=".. tostring(err))
+    end
+end
+
+local function ECON_send_cool_message()
+    for pid,_ in pairs(MP.GetPlayers() or {}) do
+        sendTo(pid, tr_for_pid(pid, "cool_player_message"))
+    end
+end
+
+function ECON_add_money_timer()
+    log("ECON_add_money_timer tick")
+    for pid,_ in pairs(MP.GetPlayers() or {}) do
+        local uid = ensure_account_for_pid(pid)
+        add_money(uid, config.money.money_per_minute_amount)
+        log(string.format("Added %d to UID=%s new_bal=%s", config.money.money_per_minute_amount, tostring(uid), tostring(get_money(uid))))
+        sendTo(pid, tr_for_pid(pid, "added_money_per_minute", { amount=config.money.money_per_minute_amount, money=get_money(uid) }))
+        sendEconomyUIUpdate(pid)
+    end
+end
+
+local function ECON_check_and_send_welcomes()
+    for pid,_ in pairs(players_awaiting_welcome_sync) do
+        if MP.IsPlayerConnected(pid) then
+            sendTo(pid, tr_for_pid(pid, "welcome_server"))
+            sendEconomyUIUpdate(pid)
+            players_awaiting_welcome_sync[pid] = nil
+        end
+    end
+end
+
+local ZIGZAG_MIN_DELTA_ANGLE = math.rad(1)
+
 local function atan2(y, x)
     if x > 0 then
         return math.atan(y / x)
@@ -104,668 +344,464 @@ local function atan2(y, x)
     end
 end
 
--- Simple logging helper that prefixes messages with the plugin tag so logs are
--- easy to filter.
-local function log(msg)
-    print(PLUGIN.. " ".. tostring(msg))
+local function dist(pos1, pos2)
+    local dx = (pos1[1] or 0) - (pos2[1] or 0)
+    local dy = (pos1[2] or 0) - (pos2[2] or 0)
+    local dz = (pos1[3] or 0) - (pos2[3] or 0)
+    return math.sqrt(dx*dx + dy*dy + dz*dz)
 end
 
--- =============================================================================
--- || FILE IO / JSON HELPERS                                                 ||
--- =============================================================================
-
--- Check whether a file exists by trying to open it for reading. Returns true
--- if open succeeds, false otherwise. Used before attempting to read files.
-local function file_exists(path)
-    local f = io.open(path, "r")
-    if f then f:close() return true end
-    return false
-end
-
--- Read the full contents of a file safely. Returns the file string or nil if
--- the file could not be opened. Caller must handle nil.
-local function safe_read(path)
-    local f = io.open(path, "r")
-    if not f then return nil end
-    local s = f:read("*a") 
-    f:close()
-    return s
-end
-
--- Write content to a file in "w+" mode. Returns true on success, false on
--- failure. Uses pcall around f.write to catch any write-time errors.
-local function safe_write(path, content)
-    local f = io.open(path, "w+") 
-    if not f then
-        log("ERROR: Could not open file for writing: ".. path)
-        return false
-    end
-    local ok, err = pcall(f.write, f, content)
-    f:close()
-    if not ok then
-        log("ERROR writing file ".. path.. ": ".. tostring(err))
-        return false
-    end
-    return true
-end
-
--- Encode a Lua table into JSON. This function attempts several backends in the
--- following order: Util.JsonEncode (BeamMP helper), the required json module,
--- and finally a simple fallback that encodes only a table with a 'money' field.
--- Returns the JSON string or nil on failure.
-local function encode_json(tbl)
-    if type(tbl) ~= "table" then return nil end
-    if type(Util) == "table" and Util.JsonEncode then
-        local ok, s = pcall(Util.JsonEncode, tbl)
-        if ok and type(s) == "string" then return s end
-    end
-    if json and json.encode then
-        local ok, s = pcall(json.encode, tbl)
-        if ok and type(s) == "string" then return s end
-    end
-    -- Very small fallback used by this plugin when only money is required.
-    if tbl.money ~= nil then
-        return '{"money":'.. tostring(tbl.money).. '}'
-    end
-    return nil
-end
-
--- Decode JSON string into a Lua table. Tries Util.JsonDecode and the json
--- module; returns nil if decoding fails.
-local function decode_json(str)
-    if type(str) ~= "string" then return nil end
-    if type(Util) == "table" and Util.JsonDecode then
-        local ok, t = pcall(Util.JsonDecode, str)
-        if ok and type(t) == "table" then return t end
-    end
-    if json and json.decode then
-        local ok, t = pcall(json.decode, str)
-        if ok and type(t) == "table" then return t end
-    end
-    return nil
-end
-
--- Load JSON file into a Lua table using safe_read + decode_json. If parsing
--- fails the file is removed (if FS.Remove is available) and an empty table is returned.
-local function json_load(path)
-    local s = safe_read(path)
-    if not s or s == "" then return {} end 
-    
-    local ok, tbl = pcall(function() return decode_json(s) end)
-    if ok and type(tbl) == "table" then return tbl end
-    
-    if type(Util) == "table" and Util.JsonDecode then
-        local ok2, tbl2 = pcall(Util.JsonDecode, s)
-        if ok2 and type(tbl2) == "table" then return tbl2 end
-    end
-    
-    log("ERROR decoding JSON from ".. path.. ": ".. tostring(tbl))
-    if FS and FS.Remove then pcall(FS.Remove, path) end
-    return {}
-end
-
--- Atomic save helper: write JSON to temp file and rename. If FS.Rename is
--- available it uses that (atomic on many platforms); otherwise falls back to
--- direct write.
-local function atomic_json_save(path, tbl)
-    local s = encode_json(tbl)
-    if not s then
-        log("ERROR encoding JSON for ".. path)
-        return false
-    end
-    local temp_path = path.. ".tmp"
-    if not safe_write(temp_path, s) then return false end
-    
-    if FS and FS.Rename then
-        local ok, err = pcall(FS.Rename, temp_path, path)
-        if not ok then
-            pcall(FS.Remove, temp_path) 
-            log("ERROR renaming temp file: ".. tostring(err))
-            return false
-        end
-        return true
-    else
-        return safe_write(path, s)
-    end
-end
-
--- =============================================================================
--- || LANGUAGE / TRANSLATION HELPERS                                        ||
--- =============================================================================
-
--- Load a single language file (e.g. en.json / he.json). Returns the decoded
--- table or nil if file does not exist.
-local function load_lang_file(code)
-    local path = LANG_DIR.. "/".. code.. ".json"
-    if not file_exists(path) then return nil end
-    return json_load(path)
-end
-
--- Load all supported languages into the global translations table. Missing
--- language files become empty tables so code can safely attempt lookups.
-local function load_all_langs()
-    translations = {}
-    for _, code in ipairs(SUPPORTED_LANGS) do
-        translations[code] = load_lang_file(code) or {}
-    end
-    log("Loaded languages: ".. table.concat(SUPPORTED_LANGS, ", "))
-end
-
--- =============================================================================
--- || PLAYER IDENTIFIERS / NAMES / LANGUAGE                                  ||
--- =============================================================================
-
--- Resolve a stable UID for a PID. The function tries beammp id, steam id,
--- license id, and finally falls back to "pid:<pid>" so we always have a unique key.
-local function getUID(pid)
-    local ids = {}
-    if MP and MP.GetPlayerIdentifiers then
-        ids = MP.GetPlayerIdentifiers(pid) or {}
-    end
-    return ids.beammp or ids.steam or ids.license or ("pid:".. tostring(pid))
-end
-
--- Safe wrapper for MP.GetPlayerName with pcall fallback so the server won't error
--- if the MP API behaves unexpectedly.
-local function getPlayerNameSafe(pid)
-    if MP and MP.GetPlayerName then
-        local ok, name = pcall(MP.GetPlayerName, pid)
-        return ok and name or ("Player".. tostring(pid))
-    end
-    return ("Player".. tostring(pid))
-end
-
--- Get the language code for a player (based on account settings) or return
--- DEFAULT_LANG when none is set.
-local function get_player_lang(pid)
-    local uid = getUID(pid)
-    return (accounts[uid] and accounts[uid].lang) or DEFAULT_LANG
-end
-
--- Translate a key for a given pid and expand ${var} placeholders from vars table.
--- If translation not found we return the key itself (useful during development).
-local function tr_for_pid(pid, key, vars)
-    local lang = get_player_lang(pid)
-    local text = (translations[lang] or {})[key] or key
-    if vars then
-        for k,v in pairs(vars) do
-            text = text:gsub("${".. k.. "}", tostring(v))
-        end
-    end
-    return text
-end
-
--- =============================================================================
--- || ACCOUNT MANAGEMENT                                                     ||
--- =============================================================================
-
--- Ensure an account exists for a PID; if not, create it with sensible defaults.
--- Default money is 1000 and default role is "civilian". Change these defaults
--- freely according to your server economy balance plan.
-local function ensure_account_for_pid(pid)
-    local uid = getUID(pid)
-    if not accounts[uid] then
-        accounts[uid] = { money = 1000, lang = DEFAULT_LANG, role = "civilian" }
-    end
-    return uid
-end
-
--- Read-only accessor for money of a UID (returns 0 when account absent).
-local function get_money(uid)
-    return (accounts[uid] and accounts[uid].money) or 0
-end
-
--- Safely add money to an account. amt is converted to number and floor/ceil is
--- intentionally not used — we keep decimals if passed. Money is clamped to >= 0.
-local function add_money(uid, amt)
-    amt = tonumber(amt) or 0
-    accounts[uid] = accounts[uid] or { money = 0, lang = DEFAULT_LANG, role="civilian" }
-    accounts[uid].money = math.max(0, (accounts[uid].money or 0) + amt)
-end
-
--- Load accounts from disk; if file missing, create empty accounts table. Logs
--- number of loaded accounts for debugging.
-local function load_accounts()
-    accounts = file_exists(ACCOUNTS_FILE) and json_load(ACCOUNTS_FILE) or {}
-    local count = 0
-    for _,_ in pairs(accounts) do count = count + 1 end
-    log("Loaded accounts: ".. tostring(count))
-end
-
--- Persist accounts to disk using atomic_json_save for safety.
-local function save_accounts()
-    atomic_json_save(ACCOUNTS_FILE, accounts)
-end
-
--- =============================================================================
--- || CHAT / UI HELPERS                                                      ||
--- =============================================================================
-
--- Send a chat message to a single player; uses pcall to ensure MP.SendChatMessage
--- errors do not crash the plugin. Only sends if player is connected.
-local function sendTo(pid, msg)
-    if MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid) then
-        local ok, err = pcall(MP.SendChatMessage, pid, msg)
-        if not ok then log("ERROR sending message to ".. tostring(pid).. ": ".. tostring(err)) end
-    end
-end
-
--- Broadcast a message to all connected players.
-local function sendAll(msg)
-    for pid,_ in pairs(MP.GetPlayers() or {}) do sendTo(pid, msg) end
-end
-
--- Update the client UI about the player's money. Tries to encode the payload
--- as JSON, but falls back to a plain string if encoding is unavailable.
-local function sendEconomyUIUpdate(pid)
+local function sendWantedUIUpdate(pid, seconds)
     if not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
-    local uid = getUID(pid)
-    local playerData = accounts[uid]
-    if not playerData then return end
 
-    local payload_tbl = { money = tonumber(playerData.money) or 0 }
-    local payload_str = encode_json(payload_tbl)
-    
-    if not payload_str then
-        payload_str = tostring(payload_tbl.money)
-    end
+    local secs = tonumber(seconds) or 0
+    secs = math.max(0, math.ceil(secs))
+
+    if last_sent_wanted[pid] == secs then return end
+    last_sent_wanted[pid] = secs
+
+    local payload_tbl = { wantedTime = secs }
+    local payload_str = encode_json and encode_json(payload_tbl) or nil
 
     if not payload_str then
-        log("[EconomyUI]: ERROR generating payload for PID=".. tostring(pid))
+        if log then log("[EconomyUI-Wanted]: ERROR generating payload for PID=".. tostring(pid)) end
         return
     end
 
     local ok, err = pcall(function()
-        MP.TriggerClientEvent(pid, "receiveMoney", payload_str)
+        MP.TriggerClientEvent(pid, "updateWantedStatus", payload_str)
     end)
-    if ok then
-         log("[EconomyUI]: Sent UI update for PID: ".. tostring(pid).. " payload=".. tostring(payload_str))
+    if not ok then
+        if log then log("[EconomyUI-Wanted]: ERROR sending UI update PID=".. tostring(pid).. " err=".. tostring(err)) end
+    end
+end
+
+local function update_wanted_timer(pid, duration_ms, source_key)
+    local now = os.time() * 1000
+    local current_expiration = wanted_timers[pid] or 0
+    local new_expiration = current_expiration
+    local duration_sec = duration_ms / 1000
+
+    if current_expiration < now then
+        new_expiration = now + duration_ms
+        sendTo(pid, tr_for_pid(pid, source_key, { duration = duration_sec }))
+        if log then log(string.format("[WANTED] PID=%s - Started WANTED timer for %.2f seconds (Source: %s).", pid, duration_sec, source_key)) end
     else
-        log("[EconomyUI]: ERROR sending UI update PID=".. tostring(pid).. " err=".. tostring(err))
+        new_expiration = current_expiration + duration_ms
+        sendTo(pid, tr_for_pid(pid, "wanted_extended", { seconds = duration_sec }))
+        if log then log(string.format("[WANTED] PID=%s - Extended WANTED timer by %.2f seconds. New total: %.2f seconds.", pid, duration_sec, (new_expiration - now) / 1000)) end
     end
+
+    wanted_timers[pid] = new_expiration
+    local remaining_sec = math.max(0, math.ceil((new_expiration - now) / 1000))
+    sendWantedUIUpdate(pid, remaining_sec)
 end
 
--- =============================================================================
--- || MESSAGES / TIMED EVENTS                                                 ||
--- =============================================================================
+function fail_wanted_status(pid, reason_key)
+    if not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
 
--- Send a periodic "cool message" to all players (text key resolved per-player).
-local function ECON_send_cool_message()
-    for pid,_ in pairs(MP.GetPlayers() or {}) do
-        sendTo(pid, tr_for_pid(pid, "cool_player_message"))
-    end
-end
+    local uid = getUID(pid)
+    local current_role = accounts[uid] and accounts[uid].role
 
--- Periodic timer function that grants MONEY_PER_MINUTE_AMOUNT to each player.
--- Default behavior: every MONEY_PER_MINUTE_INTERVAL ms add MONEY_PER_MINUTE_AMOUNT.
-function ECON_add_money_timer()
-    log("ECON_add_money_timer tick")
-    for pid,_ in pairs(MP.GetPlayers() or {}) do
-        local uid = ensure_account_for_pid(pid)
-        add_money(uid, MONEY_PER_MINUTE_AMOUNT)
-        log(string.format("Added %d to UID=%s new_bal=%s", MONEY_PER_MINUTE_AMOUNT, tostring(uid), tostring(get_money(uid))))
-        sendTo(pid, tr_for_pid(pid, "added_money_per_minute", { money=get_money(uid) }))
-        sendEconomyUIUpdate(pid)
-    end
-end
-
--- Welcome sync: some clients need a small delay before receiving UI updates or
--- welcome text; this routine sends them after we flagged them in ECON_onJoin.
-local function ECON_check_and_send_welcomes()
-    for pid,_ in pairs(players_awaiting_welcome_sync) do
-        if MP.IsPlayerConnected(pid) then
-            sendTo(pid, tr_for_pid(pid, "welcome_server"))
-            sendEconomyUIUpdate(pid)
-            players_awaiting_welcome_sync[pid] = nil
-        end
-    end
-end
-
--- =============================================================================
--- || VEHICLE / ROLE DETECTION                                                ||
--- =============================================================================
-
--- Update player's role (civilian/police) based on their vehicle skin/paint.
--- This function reads vehicles returned by MP.GetPlayerVehicles and tries to
--- decode a JSON snippet to find vcf.partConfigFilename and paint_design.
-local function updatePlayerVehicleInfo(pid)
-    if not (MP and MP.GetPlayerVehicles) then return end
-    local vehicles = MP.GetPlayerVehicles(pid)
-    if not vehicles or type(vehicles) ~= "table" then
-        local uid = ensure_account_for_pid(pid)
-        if accounts[uid].role ~= "civilian" then
-            accounts[uid].role = "civilian"
-            sendTo(pid, tr_for_pid(pid, "welcome_civilian"))
-            sendEconomyUIUpdate(pid)
-        end
+    if current_role ~= "civilian" then
+        if log then log(string.format("[WANTED-FAIL] PID=%s is not a civilian. Aborting failure logic for reason: %s.", pid, reason_key)) end
         return
     end
-    for _, v in pairs(vehicles) do
-        if type(v) == "string" then
-            local json_match = v:match("{.*}")
-            if json_match then
-                local ok, data = pcall(function() return decode_json(json_match) end)
-                if ok and type(data) == "table" then
-                    local vehSkin = (data.vcf and data.vcf.partConfigFilename) or "default_skin"
-                    local vehPaint = (data.vcf and data.vcf.parts and data.vcf.parts.paint_design)
-                    local uid = ensure_account_for_pid(pid)
-                    local oldRole = accounts[uid].role or "civilian"
-                    local newRole = "civilian"
-                    for _, skin in ipairs(PoliceSkins) do
-                        if vehSkin == skin or vehPaint == skin then newRole = "police"; break end
-                    end
-                    if oldRole ~= newRole then
-                        accounts[uid].role = newRole
-                        sendTo(pid, tr_for_pid(pid, newRole == "police" and "welcome_police" or "welcome_civilian"))
-                        sendEconomyUIUpdate(pid)
-                    end
-                    return
-                end
-            end
-        end
-    end
-    local uid = ensure_account_for_pid(pid)
-    if accounts[uid].role ~= "civilian" then
-        accounts[uid].role = "civilian"
-        sendTo(pid, tr_for_pid(pid, "welcome_civilian"))
-        sendEconomyUIUpdate(pid)
-    end
-end
 
--- =============================================================================
--- || ZIGZAG / SPEED BONUS LOGIC                                             ||
--- =============================================================================
-
--- Cancel an ongoing zigzag bonus for a player. If there are unpaid prorated
--- seconds, they are paid before cancellation. The function can suppress player
--- notifications when no_notify is true (useful during disconnect cleanup).
-local function cancel_zigzag_bonus(pid, no_notify, reason)
-    if not pid then return end
-    local bonus = zigzag_bonuses[pid]
-    if not bonus then return end
-
-    local now = os.time() * 1000
-    local uid = getUID(pid)
-
-    local elapsed = now - bonus.startTime
-    local seconds_passed = math.floor(elapsed / 1000)
-    local seconds_last_paid = math.floor((bonus.lastPayment - bonus.startTime) / 1000)
-    local unpaid_seconds = 0
-    if seconds_passed > seconds_last_paid then
-        unpaid_seconds = seconds_passed - seconds_last_paid
-        local ok, err = pcall(add_money, uid, unpaid_seconds)
-        if not ok then log("ERROR adding prorated money for UID="..tostring(uid)..": "..tostring(err)) end
-    end
-
-    if not no_notify and MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid) then
-        if unpaid_seconds > 0 then
-            sendTo(pid, tr_for_pid(pid, "zigzag_bonus_prorated_end", { amount = unpaid_seconds }))
-        else
-            sendTo(pid, tr_for_pid(pid, "zigzag_bonus_cancelled", { reason = reason or "stopped" }))
-        end
-        sendEconomyUIUpdate(pid)
-    end
-
-    zigzag_bonuses[pid] = nil
-    zigzag_cooldowns[pid] = now
-    player_zigzag_state[pid] = nil
-
-    log(string.format("Zigzag bonus cancelled PID=%s reason=%s paid=%d", tostring(pid), tostring(reason), unpaid_seconds))
-end
-
--- Handle the detection that a player is "speeding". This starts a short-lived
--- bonus if the player is a civilian and not currently on cooldown.
-local function handle_speeding(pid, speed)
-    local now = os.time() * 1000 
-    if speeding_cooldowns[pid] and now - speeding_cooldowns[pid] < SPEEDING_COOLDOWN_MS then
+    if not wanted_timers[pid] or wanted_timers[pid] <= os.time() * 1000 then
+        if log then log(string.format("[WANTED-FAIL] PID=%s is not currently WANTED. Aborting penalty/cleanup for reason: %s.", pid, reason_key)) end
         return
     end
-    local uid = getUID(pid)
-    if accounts[uid] and accounts[uid].role == "civilian" then
-        speeding_bonuses[pid] = { startTime = now, lastPayment = now }
-        speeding_cooldowns[pid] = now 
-        sendTo(pid, tr_for_pid(pid, "speed_bonus_start"))
-    end
-end
 
--- Cancel a speeding bonus, paying any prorated seconds and optionally notifying
--- the player (unless no_notify is true).
-local function cancel_speeding_bonus(pid, no_notify, reason)
-    if not pid then return end
-    local bonus = speeding_bonuses[pid]
-    if not bonus then return end
+    local current_money = get_money(uid) or 0
+    local penalty = config.civilian.wanted_fail_penalty
 
-    local now = os.time() * 1000
-    local uid = getUID(pid)
+    add_money(uid, -penalty)
+    local new_money = get_money(uid)
 
-    local elapsed = now - bonus.startTime
-    local seconds_passed = math.floor(elapsed / 1000)
-    local seconds_last_paid = math.floor((bonus.lastPayment - bonus.startTime) / 1000)
-    local unpaid_seconds = 0
-    if seconds_passed > seconds_last_paid then
-        unpaid_seconds = seconds_passed - seconds_last_paid
-        local ok, err = pcall(add_money, uid, unpaid_seconds)
-        if not ok then log("ERROR adding prorated money for UID="..tostring(uid)..": "..tostring(err)) end
-    end
+    if log then log(string.format("[WANTED-FAIL-MONEY] PID=%s UID=%s. Old: $%d. New: $%d (Penalty: $%d).", pid, uid, current_money, new_money, penalty)) end
 
-    if not no_notify and MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid) then
-        if unpaid_seconds > 0 then
-            sendTo(pid, tr_for_pid(pid, "speed_bonus_prorated_end", { amount = unpaid_seconds }))
-        else
-            sendTo(pid, tr_for_pid(pid, "speed_bonus_cancelled", { reason = reason or "stopped" }))
-        end
-        sendEconomyUIUpdate(pid)
-    end
+    sendTo(pid, tr_for_pid(pid, "wanted_fail_message", {
+        penalty = penalty,
+        reason = tr_for_pid(pid, reason_key)
+    }))
+
+    sendEconomyUIUpdate(pid)
+
+    wanted_timers[pid] = nil
+    last_sent_wanted[pid] = nil
+    sendWantedUIUpdate(pid, 0)
 
     speeding_bonuses[pid] = nil
-    speeding_cooldowns[pid] = now
+    zigzag_bonuses[pid] = nil
 
-    log(string.format("Speed bonus cancelled PID=%s reason=%s paid=%d", tostring(pid), tostring(reason), unpaid_seconds))
+    speeding_cooldowns[pid] = nil
+    zigzag_cooldowns[pid] = nil
+
+    busted_timers[pid] = nil
+    player_zigzag_state[pid] = nil
+
+    if log then log(string.format("[WANTED-FAIL] PID=%s FAILED WANTED status (Reason: %s). Penalty: $%d. Cooldowns reset.", pid, reason_key, penalty)) end
 end
 
--- Core zigzag detection. Analyzes player velocity, computes movement angle,
--- accumulates alternating turns, and starts a zigzag bonus when thresholds are met.
-local function handle_zigzag(pid, pos)
-    log("[ZIGZAG LOG] Starting zigzag check for PID: ".. tostring(pid))
-    local uid = getUID(pid)
-    if not accounts[uid] or accounts[uid].role ~= "civilian" then
-        return
-    end
-    if not pos or not pos.rot or not pos.vel then
-        return
-    end
-
-    if zigzag_bonuses[pid] then
-        return
-    end
-    
-    local speed = math.sqrt((pos.vel[1] or 0)^2 + (pos.vel[2] or 0)^2) * 3.6 
+local function handle_speeding(pid, speed)
     local now = os.time() * 1000
 
-    -- Compute movement angle from velocity vector.
-    local move_angle = atan2(pos.vel[2], pos.vel[1])
-    
-    log(string.format("[ZIGZAG LOG] PID=%s - Speed: %.2f KMH, Move Angle: %.2f", pid, speed, move_angle))
-
-    -- Respect per-player cooldowns for zigzag; if still cooling down, skip.
-    if zigzag_cooldowns[pid] and (now - zigzag_cooldowns[pid] < ZIGZAG_COOLDOWN_MS) then
-        log(string.format("[ZIGZAG LOG] PID=%s - Zigzag bonus on cooldown.", pid))
+    if speeding_cooldowns[pid] and now - speeding_cooldowns[pid] < config.civilian.speeding_cooldown_ms then
         return
     end
 
-    if speed < MIN_SPEED_KMH_FOR_ZIGZAG then
+    local uid = getUID(pid)
+    if accounts[uid] and accounts[uid].role == "civilian" then
+        if not speeding_bonuses[pid] then
+            speeding_bonuses[pid] = { startTime = now, lastPayment = now }
+        end
+
+        update_wanted_timer(pid, config.civilian.speeding_bonus_duration_ms, "speed_start_wanted")
+        speeding_cooldowns[pid] = now
+    end
+end
+
+local function handle_zigzag(pid, pos)
+    local uid = getUID(pid)
+    if not accounts[uid] or accounts[uid].role ~= "civilian" then return end
+    if not pos or not pos.rot or not pos.vel then return end
+
+    local now = os.time() * 1000
+
+    local speed = math.sqrt((pos.vel[1] or 0)^2 + (pos.vel[2] or 0)^2) * 3.6
+    if speed < config.civilian.min_speed_kmh_for_zigzag then
         player_zigzag_state[pid] = nil
         return
     end
-    
+
+    if zigzag_cooldowns[pid] and (now - zigzag_cooldowns[pid] < config.civilian.zigzag_cooldown_ms) then return end
+
+    local move_angle = atan2(pos.vel[2], pos.vel[1])
+
     if not player_zigzag_state[pid] then
-        -- First sample: store angle and initialize counters.
         player_zigzag_state[pid] = {
             last_angle = move_angle,
             consecutive_turns = 0,
             last_direction = 0
         }
-        log(string.format("[ZIGZAG LOG] PID=%s - Initialized, first move angle recorded.", pid))
         return
     end
 
     local state = player_zigzag_state[pid]
     local last_angle = state.last_angle
-    
-    -- Normalize angle difference to [-pi, pi]. This prevents spurious large deltas
-    -- due to wrap-around at the -pi/pi boundary.
-    local delta_angle = move_angle - last_angle
-    if delta_angle > math.pi then
-        delta_angle = delta_angle - 2 * math.pi
-    elseif delta_angle < -math.pi then
-        delta_angle = delta_angle + 2 * math.pi
-    end
-    
-    local delta_angle_deg = math.deg(delta_angle)
 
-    -- Ignore very small angle changes (noise) to avoid counting insignificant
-    -- steering jitter as a zigzag turn.
-    if math.abs(delta_angle_deg) < math.deg(ZIGZAG_MIN_DELTA_ANGLE) then
-        log(string.format("[ZIGZAG LOG] PID=%s - Delta angle too small (%.2f < %.2f degrees), skipping.", pid, math.abs(delta_angle_deg), math.deg(ZIGZAG_MIN_DELTA_ANGLE)))
-        return
-    end
-    
+    local delta_angle = move_angle - last_angle
+    if delta_angle > math.pi then delta_angle = delta_angle - 2 * math.pi
+    elseif delta_angle < -math.pi then delta_angle = delta_angle + 2 * math.pi end
+
+    if math.abs(math.deg(delta_angle)) < math.deg(ZIGZAG_MIN_DELTA_ANGLE) then return end
+
     local direction = (delta_angle > 0) and 1 or -1
 
-    log(string.format("[ZIGZAG LOG] PID=%s - Last angle: %.2f, New angle: %.2f, Delta: %.2f deg, Last direction: %d, New direction: %d", 
-                      pid, math.deg(last_angle), math.deg(move_angle), delta_angle_deg, state.last_direction, direction))
-
-    -- Count alternating turns: increment when direction flips compared to last_direction.
     if state.last_direction ~= 0 and direction ~= state.last_direction then
         state.consecutive_turns = state.consecutive_turns + 1
-        log(string.format("[ZIGZAG LOG] PID=%s - Zigzag turn detected! Consecutive turns: %d", pid, state.consecutive_turns))
     else
-        -- Reset to 1 when it's the same direction or first counted turn.
         state.consecutive_turns = 1
-        log(string.format("[ZIGZAG LOG] PID=%s - Direction is same or first turn. Resetting turns count to 1.", pid))
     end
-    
+
     state.last_angle = move_angle
     state.last_direction = direction
 
-    -- When enough alternating turns are observed, start the bonus and reset state.
-    if state.consecutive_turns >= ZIGZAG_MIN_TURNS then
-        zigzag_bonuses[pid] = { startTime = now, lastPayment = now }
-        -- Set a cooldown that includes the duration of the bonus so we cannot
-        -- immediately retrigger after it ends.
-        zigzag_cooldowns[pid] = now + ZIGZAG_BONUS_DURATION_MS + ZIGZAG_COOLDOWN_MS
-        sendTo(pid, tr_for_pid(pid, "zigzag_bonus_start"))
-        log(string.format("[ZIGZAG LOG] PID=%s - Started a new zigzag bonus!", pid))
-        
+    if state.consecutive_turns >= config.civilian.zigzag_min_turns then
+        if not zigzag_bonuses[pid] then
+            zigzag_bonuses[pid] = { startTime = now, lastPayment = now }
+        end
+
+        update_wanted_timer(pid, config.civilian.zigzag_bonus_duration_ms, "zigzag_start_wanted")
+        zigzag_cooldowns[pid] = now
         player_zigzag_state[pid] = nil
     end
 end
 
--- =============================================================================
--- || EVENT HANDLERS (vehicle/change/reset)                                  ||
--- =============================================================================
+function updatePlayerVehicleInfo(pid)
+    local uid = getUID(pid)
+    if not accounts[uid] then return end
 
--- When a vehicle is edited on the client, cancel related bonuses. The ...
--- signature is used because MP passes multiple arguments; we only need the PID.
+    if not (MP and MP.GetPlayerVehicles) then
+        if log then log("ERROR: MP.GetPlayerVehicles is not available.") end
+        return
+    end
+
+    local ok, vehicles = pcall(MP.GetPlayerVehicles, pid)
+
+    local is_police = false
+    local current_role = accounts[uid].role or "civilian"
+    local new_role = "civilian"
+
+    if ok and vehicles and type(vehicles) == "table" then
+        for _, v in pairs(vehicles) do
+            if type(v) == "string" then
+                local json_match = v:match("{.*}")
+                if json_match then
+                    local ok_json, data = pcall(function() return decode_json(json_match) end)
+                    if ok_json and type(data) == "table" then
+                        local vehSkin = (data.vcf and data.vcf.partConfigFilename) or ""
+                        local vehPaint = (data.vcf and data.vcf.parts and data.vcf.parts.paint_design) or ""
+
+                        for _, skin in ipairs(PoliceSkins or {}) do
+                            if vehSkin == skin or vehPaint == skin then
+                                new_role = "police";
+                                is_police = true;
+                                break
+                            end
+                        end
+                        if is_police then break end
+                    end
+                end
+            end
+        end
+    end
+
+    if current_role ~= new_role then
+        accounts[uid].role = new_role
+
+        if new_role == "police" then
+            sendTo(pid, tr_for_pid(pid, "welcome_police"))
+
+            if wanted_timers[pid] and wanted_timers[pid] > os.time() * 1000 then
+                 fail_wanted_status(pid, "reason_became_police")
+            end
+
+            accounts[uid].last_police_payment = os.time() * 1000
+
+        elseif new_role == "civilian" then
+            sendTo(pid, tr_for_pid(pid, "welcome_civilian"))
+        end
+        sendEconomyUIUpdate(pid)
+        sendWantedUIUpdate(pid, 0)
+        if log then log(string.format("PID=%s role changed from %s to %s", pid, current_role, new_role)) end
+    end
+end
+
+function ECON_check_all_player_updates()
+    local now = os.time() * 1000
+    local all_players = MP.GetPlayers() or {}
+
+    local player_data = {}
+    local wanted_civilian_data = {}
+    local police_data = {}
+
+    local civilian_police_proximity_count = {}
+    local police_near_event_count = {}
+
+    for pid,_ in pairs(all_players) do
+        if MP.IsPlayerConnected(pid) then
+            local uid = getUID(pid)
+            local role = accounts[uid] and accounts[uid].role or "civilian"
+
+            local ok, pos = pcall(MP.GetPositionRaw, pid, 0)
+            local speed = (ok and pos and pos.vel) and math.sqrt(pos.vel[1]^2 + pos.vel[2]^2) * 3.6 or 0
+
+            player_data[pid] = { pos = (ok and pos and pos.pos) or nil, speed = speed, role = role }
+
+            if role == "civilian" then
+                if ok and pos then
+                    if config.features.speeding_bonus_enabled and speed > config.civilian.speeding_limit_kmh then
+                        pcall(handle_speeding, pid, speed)
+                    end
+                    if config.features.zigzag_bonus_enabled then
+                        pcall(handle_zigzag, pid, pos)
+                    end
+                end
+
+                if wanted_timers[pid] and wanted_timers[pid] > now then
+                    if player_data[pid].pos then
+                        wanted_civilian_data[pid] = player_data[pid]
+                    end
+                end
+            elseif role == "police" then
+                police_data[pid] = player_data[pid]
+            end
+        end
+    end
+
+for civil_pid, civil_data in pairs(wanted_civilian_data) do
+    local police_count = 0
+    local closest_cop_dist = config.police.police_proximity_range_m + 1
+    local nearby_police = {}
+
+    if civil_data.pos then
+        for cop_pid, cop_data in pairs(police_data) do
+            if cop_data.pos then
+                local distance = dist(civil_data.pos, cop_data.pos)
+
+                if distance <= config.police.police_proximity_range_m then
+                    police_count = police_count + 1
+                    police_near_event_count[cop_pid] = (police_near_event_count[cop_pid] or 0) + 1
+                end
+
+                if distance <= config.police.busted_range_m then
+                    table.insert(nearby_police, cop_pid)
+                end
+
+                if distance < closest_cop_dist then
+                    closest_cop_dist = distance
+                end
+            end
+        end
+    end
+
+    civilian_police_proximity_count[civil_pid] = police_count
+
+    if civil_data.pos then
+        if civil_data.speed < config.police.busted_speed_limit_kmh and closest_cop_dist <= config.police.busted_range_m then
+            if not busted_timers[civil_pid] then
+                busted_timers[civil_pid] = now
+            else
+                local elapsed_time = now - busted_timers[civil_pid]
+                if elapsed_time >= config.police.busted_stop_time_ms then
+                    local uid = getUID(civil_pid)
+                    local name = MP.GetPlayerName(civil_pid)
+
+                    fail_wanted_status(civil_pid, "reason_busted")
+
+                    busted_timers[civil_pid] = nil
+
+                    sendAll(tr_for_pid(civil_pid, "busted_global_message", { criminal = name }))
+
+                    local bust_bonus = config.police.bust_bonus_amount
+
+                    for _, cop_pid in ipairs(nearby_police) do
+                        local cop_uid = getUID(cop_pid)
+                        add_money(cop_uid, bust_bonus)
+
+                        sendTo(cop_pid, tr_for_pid(cop_pid, "police_bust_bonus", { amount = bust_bonus, criminal = name }))
+
+                        sendEconomyUIUpdate(cop_pid)
+
+                        if log then log(string.format("[BUSTED] Rewarded Police PID=%s UID=%s with $%d for bust of PID=%s.", cop_pid, cop_uid, bust_bonus, civil_pid)) end
+                    end
+                end
+            end
+        else
+            busted_timers[civil_pid] = nil
+        end
+    end
+end
+
+    for pid,_ in pairs(all_players) do
+        if MP.IsPlayerConnected(pid) then
+            local uid = getUID(pid)
+            local role = accounts[uid] and accounts[uid].role or "civilian"
+            local is_wanted = wanted_timers[pid] and wanted_timers[pid] > now
+
+            local remaining_wanted_ms = (wanted_timers[pid] or 0) - now
+            local remaining_wanted_seconds = math.max(0, math.ceil(remaining_wanted_ms / 1000))
+            sendWantedUIUpdate(pid, remaining_wanted_seconds)
+
+            if wanted_timers[pid] and wanted_timers[pid] <= now then
+
+                local bonus_amount = config.civilian.zigzag_final_bonus_amount
+
+                add_money(uid, bonus_amount)
+
+                sendTo(pid, tr_for_pid(pid, "zigzag_end_reward", { amount = bonus_amount }))
+                sendEconomyUIUpdate(pid)
+
+                if log then log(string.format("[EVASION] PID %d (UID: %s) evaded WANTED status and received $%.2f bonus.", pid, uid, bonus_amount)) end
+
+                wanted_timers[pid] = nil
+                last_sent_wanted[pid] = nil
+                is_wanted = false
+            end
+
+            if (is_wanted and config.features.roleplay_enabled) or (role == "police" and config.features.police_features_enabled) then
+
+                local last_payment_ms = now - 1000
+
+                if role == "police" then
+                    last_payment_ms = accounts[uid].last_police_payment or (now - 1000)
+                elseif is_wanted then
+                    last_payment_ms = speeding_bonuses[pid] and speeding_bonuses[pid].lastPayment or zigzag_bonuses[pid] and zigzag_bonuses[pid].lastPayment or (now - 1000)
+                end
+
+                local seconds_passed = math.max(0, math.floor(now / 1000) - math.floor(last_payment_ms / 1000))
+
+                if seconds_passed > 0 then
+                    local money_to_add = 0
+
+                    if role == "police" then
+                        local civilian_event_count = police_near_event_count[pid] or 0
+                        if civilian_event_count > 0 and config.police.police_bonus_per_second ~= nil then
+                            money_to_add = seconds_passed * config.police.police_bonus_per_second * civilian_event_count
+                            accounts[uid].last_police_payment = now
+                        end
+
+                    elseif is_wanted then
+                        local police_count = civilian_police_proximity_count[pid] or 0
+
+                        if police_count > 0 then
+                            if speeding_bonuses[pid] and config.features.speeding_bonus_enabled then
+                                money_to_add = money_to_add + (seconds_passed * config.civilian.speeding_bonus_per_second * police_count)
+                            end
+                            if zigzag_bonuses[pid] and config.features.zigzag_bonus_enabled then
+                                money_to_add = money_to_add + (seconds_passed * config.civilian.zigzag_prorated_bonus * police_count)
+                            end
+                        end
+                    end
+
+                    if money_to_add > 0 then
+                        add_money(uid, money_to_add)
+                        sendEconomyUIUpdate(pid)
+
+                        if speeding_bonuses[pid] then speeding_bonuses[pid].lastPayment = now end
+                        if zigzag_bonuses[pid] then zigzag_bonuses[pid].lastPayment = now end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function ECON_onVehicleEdited(...)
     local pid = select(1, ...)
     if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
-    cancel_speeding_bonus(pid, false, "vehicle_edited")
-    cancel_zigzag_bonus(pid, false, "change_vehicle")
+
+    fail_wanted_status(pid, "reason_vehicle_edited")
+
+    updatePlayerVehicleInfo(pid)
 end
 
--- When player changes vehicle: same cancellations as above.
 function ECON_onChangeVehicle(...)
     local pid = select(1, ...)
     if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
-    cancel_speeding_bonus(pid, false, "change_vehicle")
-    cancel_zigzag_bonus(pid, false, "change_vehicle")
+
+    fail_wanted_status(pid, "reason_change_vehicle")
+
+    updatePlayerVehicleInfo(pid)
 end
 
--- =============================================================================
--- || COMBINED UPDATE LOOP                                                     ||
--- =============================================================================
+function ECON_onVehicleReset(...)
+    local pid = select(1, ...)
+    if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
 
--- This function is invoked periodically (every COMBINED_CHECK_INTERVAL ms) and
--- performs per-player checks: obtains raw position/velocity and runs the
--- speeding and zigzag handlers. It also updates running bonuses (prorated
--- payments) and final payouts when durations finish.
-local function ECON_check_all_player_updates()
-    local now = os.time() * 1000
-    for pid,_ in pairs(MP.GetPlayers() or {}) do
-        if MP.IsPlayerConnected(pid) then
-            local ok, pos = pcall(MP.GetPositionRaw, pid, 0)
-            if ok and pos and pos.vel then
-                local speed = math.sqrt((pos.vel[1] or 0)^2 + (pos.vel[2] or 0)^2) * 3.6 
-                if speed > SPEED_LIMIT_KMH then
-                    pcall(handle_speeding, pid, speed)
-                end
-                local ok, err = pcall(handle_zigzag, pid, pos)
-                if not ok then
-                    log("ERROR: pcall failed for handle_zigzag: " .. tostring(err))
-                end
-            end
-        end
-    end
+    fail_wanted_status(pid, "reason_vehicle_reset")
 
-    -- Process active speeding bonuses: pay per-second increments and handle
-    -- the final fixed payout after one minute (hard-coded 60000ms in this loop).
-    local players_to_remove_speed = {}
-    for pid, bonus_data in pairs(speeding_bonuses) do
-        local elapsed = now - bonus_data.startTime
-        local uid = getUID(pid)
-        local seconds_passed = math.floor(elapsed / 1000)
-        local seconds_last_paid = math.floor((bonus_data.lastPayment - bonus_data.startTime) / 1000)
-        if seconds_passed > seconds_last_paid then
-            add_money(uid, seconds_passed - seconds_last_paid)
-            bonus_data.lastPayment = now
-            sendEconomyUIUpdate(pid)
-        end
-        if elapsed >= 60000 then
-            if MP.IsPlayerConnected(pid) then
-                add_money(uid, 50) 
-                sendTo(pid, tr_for_pid(pid, "speed_bonus_end"))
-                sendEconomyUIUpdate(pid)
-            end
-            table.insert(players_to_remove_speed, pid)
-        end
-    end
-    for _, pid in ipairs(players_to_remove_speed) do speeding_bonuses[pid] = nil end
-
-    -- Process active zigzag bonuses: pay prorated per-second amounts and
-    -- the final lump-sum at the end of the bonus duration.
-    local players_to_remove_zigzag = {}
-    for pid, bonus_data in pairs(zigzag_bonuses) do
-        local elapsed = now - bonus_data.startTime
-        local uid = getUID(pid)
-        
-        local seconds_passed = math.floor(elapsed / 1000)
-        local seconds_last_paid = math.floor((bonus_data.lastPayment - bonus_data.startTime) / 1000)
-        
-        if seconds_passed > seconds_last_paid then
-            add_money(uid, ZIGZAG_PRORATED_BONUS * (seconds_passed - seconds_last_paid))
-            bonus_data.lastPayment = now
-            sendEconomyUIUpdate(pid)
-        end
-
-        if elapsed >= ZIGZAG_BONUS_DURATION_MS then
-            if MP.IsPlayerConnected(pid) then
-                add_money(uid, ZIGZAG_FINAL_BONUS_AMOUNT)
-                sendTo(pid, tr_for_pid(pid, "zigzag_bonus_end"))
-                sendEconomyUIUpdate(pid)
-            end
-            table.insert(players_to_remove_zigzag, pid)
-        end
-    end
-    for _, pid in ipairs(players_to_remove_zigzag) do zigzag_bonuses[pid] = nil end
+    updatePlayerVehicleInfo(pid)
 end
 
--- =============================================================================
--- || ROLE CHECK TIMER                                                         ||
--- =============================================================================
+function ECON_onPlayerExitVehicle(...)
+    local pid = select(1, ...)
+    if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
 
--- Periodic check to update player's vehicle/role info. Runs independently from
--- the combined loop so it can be tuned separately.
+    fail_wanted_status(pid, "reason_exit_vehicle")
+end
+
+function ECON_onVehicleDelete(...)
+    local pid = select(1, ...)
+    if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
+
+    fail_wanted_status(pid, "reason_vehicle_delete")
+
+    updatePlayerVehicleInfo(pid)
+end
+
 function ECON_check_roles_timer()
     local players = MP.GetPlayers() or {}
     for pid, _ in pairs(players) do
@@ -775,12 +811,8 @@ function ECON_check_roles_timer()
     end
 end
 
--- =============================================================================
--- || CHAT COMMANDS                                                           ||
--- =============================================================================
-
 local function cmd_help(pid)
-    local keys = { "help_title", "help_money", "help_who", "help_pay", "help_catch", "help_setlang", "help_repair" }
+    local keys = { "help_title", "help_money", "help_who", "help_pay", "help_setlang", "help_repair" }
     for _, k in ipairs(keys) do sendTo(pid, tr_for_pid(pid, k)) end
 end
 
@@ -817,61 +849,65 @@ local function cmd_pay(pid, toStr, amtStr)
     sendEconomyUIUpdate(to)
 end
 
--- =============================================================================
--- || UI LANGUAGE / SETTINGS                                                   ||
--- =============================================================================
+function ECON_onChat(pid, msg)
+    local args = {}
+    for arg in msg:gmatch("%S+") do table.insert(args, arg) end
+    if #args == 0 then return end
+
+    local cmd = args[1]:lower()
+    if cmd == "/help" then
+        cmd_help(pid)
+    elseif cmd == "/money" then
+        cmd_money(pid)
+    elseif cmd == "/who" then
+        cmd_who(pid)
+    elseif cmd == "/pay" then
+        cmd_pay(pid, args[2], args[3])
+    elseif cmd == "/setlang" then
+        ECON_onUI_setLanguage(pid, args[2])
+    end
+end
 
 function ECON_onUI_setLanguage(pid, langCode)
     if not translations[langCode] then
         sendTo(pid, tr_for_pid(pid, "lang_not_found", { supported_langs = table.concat(SUPPORTED_LANGS, ", ") }))
         return
     end
-    
+
     local uid = ensure_account_for_pid(pid)
     accounts[uid].lang = langCode
-    save_accounts() 
+    save_accounts()
     sendTo(pid, tr_for_pid(pid, "language_changed"))
     MP.TriggerClientEvent(pid, "receiveLanguage", langCode)
 end
 
--- =============================================================================
--- || POLICE / CATCH COMMAND                                                   ||
--- =============================================================================
-
-local function cmd_catch(pid, targetStr)
-    local target = tonumber(targetStr)
-    if not target or not MP.IsPlayerConnected(target) then
-        sendTo(pid, tr_for_pid(pid, "invalid_target"))
-        return
-    end
-    local copUID, targetUID = ensure_account_for_pid(pid), getUID(target)
-    if accounts[copUID].role == "police" and accounts[targetUID].role == "civilian" then
-        add_money(copUID, 500) 
-        for id, _ in pairs(MP.GetPlayers() or {}) do
-            sendTo(id, tr_for_pid(id, "caught", { cop=getPlayerNameSafe(pid), criminal=getPlayerNameSafe(target) }))
-        end
-        sendEconomyUIUpdate(pid)
-    else
-        sendTo(pid, tr_for_pid(pid, "invalid_catch"))
-    end
-end
-
--- =============================================================================
--- || INITIALIZATION / TIMERS / REGISTRATION                                   ||
--- =============================================================================
-
 function ECON_onInit()
+    load_config()
     load_all_langs()
     load_accounts()
-    MP.CreateEventTimer("ECON_autosave", AUTOSAVE_INTERVAL_MS)
-    MP.CreateEventTimer("ECON_cool_message", COOL_MESSAGE_INTERVAL_MS)
-    MP.CreateEventTimer("ECON_add_money", MONEY_PER_MINUTE_INTERVAL)
+
+    MP.CreateEventTimer("ECON_autosave", config.general.autosave_interval_ms)
     MP.CreateEventTimer("ECON_welcome_checker", WELCOME_CHECK_INTERVAL)
-    MP.CreateEventTimer("ECON_combined_checker", COMBINED_CHECK_INTERVAL)
-    MP.CreateEventTimer("ECON_role_checker", 5000)
+
+    if config.features.cool_message_enabled then
+        MP.CreateEventTimer("ECON_cool_message", config.money.cool_message_interval_ms)
+    end
+    if config.features.money_per_minute_enabled then
+        MP.CreateEventTimer("ECON_add_money", config.money.money_per_minute_interval_ms)
+    end
     
+    if config.features.roleplay_enabled then
+        MP.CreateEventTimer("ECON_combined_checker", COMBINED_CHECK_INTERVAL)
+        MP.CreateEventTimer("ECON_role_checker", 5000)
+
+        MP.RegisterEvent("onVehicleEdited", "ECON_onVehicleEdited")
+        MP.RegisterEvent("onPlayerChangeVehicle", "ECON_onChangeVehicle")
+        MP.RegisterEvent("onVehicleReset", "ECON_onVehicleReset")
+        MP.RegisterEvent("onPlayerExitVehicle", "ECON_onPlayerExitVehicle")
+        MP.RegisterEvent("onVehicleDelete", "ECON_onVehicleDelete")
+    end
+
     log("EconomyTest initialized.")
-    MP.RegisterEvent("onVehicleEdited", "ECON_onVehicleEdited")
 end
 
 function ECON_onAutosave()
@@ -879,7 +915,6 @@ function ECON_onAutosave()
     log("Autosave complete.")
 end
 
--- Timers data table used for delayed UI updates per-player.
 local timers_data = {}
 function __ECON_UI_DELAY_CALLBACK_HANDLER(event_name)
     local pid = timers_data[event_name]
@@ -894,34 +929,33 @@ function __ECON_UI_DELAY_CALLBACK_HANDLER(event_name)
     end
 end
 
--- =============================================================================
--- || PLAYER JOIN / LEAVE / RESET HANDLERS                                     ||
--- =============================================================================
-
 function ECON_onJoin(pid)
     players_awaiting_welcome_sync[pid] = true
     ensure_account_for_pid(pid)
-    
+
     player_zigzag_state[pid] = nil
     zigzag_cooldowns[pid] = nil
-    
-    local event_name = "__ECON_UI_DELAY_"..tostring(pid)    
-    timers_data[event_name] = pid    
+    busted_timers[pid] = nil
+
+    local event_name = "__ECON_UI_DELAY_"..tostring(pid)
+    timers_data[event_name] = pid
     MP.RegisterEvent(event_name, "__ECON_UI_DELAY_CALLBACK_HANDLER")
-    MP.CreateEventTimer(event_name, 1000, 1) 
+    MP.CreateEventTimer(event_name, 1500, 1)
 end
 
 function ECON_onLeave(pid)
-    cancel_speeding_bonus(pid, true, "player_left")
-    cancel_zigzag_bonus(pid, true, "player_left")
+    if config.features.roleplay_enabled and fail_wanted_status then
+        pcall(fail_wanted_status, pid, "reason_player_left")
+    end
 
-    save_accounts() 
-    speeding_cooldowns[pid] = nil
+    save_accounts()
     players_awaiting_welcome_sync[pid] = nil
-    speeding_bonuses[pid] = nil 
-    zigzag_bonuses[pid] = nil 
+    speeding_cooldowns[pid] = nil
+    speeding_bonuses[pid] = nil
+    zigzag_bonuses[pid] = nil
     player_zigzag_state[pid] = nil
     zigzag_cooldowns[pid] = nil
+    busted_timers[pid] = nil
 
     local event_name = "__ECON_UI_DELAY_"..tostring(pid)
     if timers_data[event_name] then
@@ -932,13 +966,6 @@ function ECON_onLeave(pid)
     end
 end
 
-function ECON_onVehicleReset(...)
-    local pid = select(1, ...)
-    if not pid or not (MP and MP.IsPlayerConnected and MP.IsPlayerConnected(pid)) then return end
-    cancel_speeding_bonus(pid, false, "vehicle_reset")
-    cancel_zigzag_bonus(pid, false, "change_vehicle")
-end
-
 function ECON_autosave() ECON_onAutosave() end
 function ECON_cool_message() ECON_send_cool_message() end
 function ECON_add_money() ECON_add_money_timer() end
@@ -946,18 +973,23 @@ function ECON_welcome_checker() ECON_check_and_send_welcomes() end
 function ECON_combined_checker() ECON_check_all_player_updates() end
 function ECON_role_checker() ECON_check_roles_timer() end
 
--- Register events so MP will call our handlers at the right moments.
+
 MP.RegisterEvent("onInit", "ECON_onInit")
 MP.RegisterEvent("ECON_autosave", "ECON_autosave")
 MP.RegisterEvent("onPlayerJoining", "ECON_onJoin")
 MP.RegisterEvent("onPlayerDisconnect", "ECON_onLeave")
 MP.RegisterEvent("onChatMessage", "ECON_onChat")
-MP.RegisterEvent("onPlayerChangeVehicle", "ECON_onChangeVehicle")
-MP.RegisterEvent("ECON_cool_message", "ECON_cool_message")
-MP.RegisterEvent("ECON_add_money", "ECON_add_money")
-MP.RegisterEvent("ECON_welcome_checker", "ECON_welcome_checker")
-MP.RegisterEvent("ECON_combined_checker", "ECON_combined_checker")
-MP.RegisterEvent("onVehicleEdited", "ECON_onVehicleEdited")
-MP.RegisterEvent("ECON_role_checker", "ECON_role_checker")
 MP.RegisterEvent("setPlayerLanguage", "ECON_onUI_setLanguage")
-MP.RegisterEvent("onVehicleReset", "ECON_onVehicleReset")
+
+if config and config.features and config.features.cool_message_enabled then
+    MP.RegisterEvent("ECON_cool_message", "ECON_cool_message")
+end
+if config and config.features and config.features.money_per_minute_enabled then
+    MP.RegisterEvent("ECON_add_money", "ECON_add_money")
+end
+MP.RegisterEvent("ECON_welcome_checker", "ECON_welcome_checker")
+
+if config and config.features and config.features.roleplay_enabled then
+    MP.RegisterEvent("ECON_combined_checker", "ECON_combined_checker")
+    MP.RegisterEvent("ECON_role_checker", "ECON_role_checker")
+end
