@@ -1,0 +1,40 @@
+{
+    "features": {
+        "roleplay_enabled": true,
+        "money_per_minute_enabled": true,
+        "cool_message_enabled": true,
+        "speeding_bonus_enabled": true,
+        "zigzag_bonus_enabled": true,
+        "police_features_enabled": true
+    },
+    "general": {
+        "autosave_interval_ms": 120000
+    },
+    "money": {
+        "money_per_minute_interval_ms": 60000,
+        "money_per_minute_amount": 10,
+        "starting_money": 3333,
+        "cool_message_interval_ms": 30000
+    },
+    "civilian": {
+        "speeding_limit_kmh": 100,
+        "speeding_bonus_duration_ms": 60000,
+        "speeding_cooldown_ms": 200000,
+        "speeding_bonus_per_second": 1,
+        "zigzag_bonus_duration_ms": 120000,
+        "zigzag_cooldown_ms": 200000,
+        "zigzag_final_bonus_amount": 50,
+        "zigzag_prorated_bonus": 5,
+        "min_speed_kmh_for_zigzag": 10,
+        "zigzag_min_turns": 5,
+        "wanted_fail_penalty": 50
+    },
+    "police": {
+        "police_proximity_range_m": 150,
+        "busted_range_m": 20,
+        "busted_stop_time_ms": 7000,
+        "busted_speed_limit_kmh": 5,
+        "police_bonus_per_second": 2,
+        "bust_bonus_amount": 100
+    }
+}
