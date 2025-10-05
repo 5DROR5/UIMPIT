@@ -1,26 +1,23 @@
---[[
-    EconomyUI Client-Side Script (key.lua)
-    Description: This script acts as the bridge between the server and the
-    HTML/JS-based user interface (UI). It receives events from the server (like money updates)
-    and forwards them to the UI, and it sends events from the UI (like language changes)
-    to the server.
+--[[    
+    UIMPIT Client-Side Script (key.lua)
+    Author: 5DROR5
+    Version: 1.3.0
 ]]
 local M = {}
 
 local PLUGIN = "[EconomyUI-Client]"
--- Load the JSON library, essential for parsing data from the server.
 local json = require("ge/extensions/dkjson")
 
--- State variables to manage event handler registration.
 local registered_events = false
 local retry_acc = 0
-local RETRY_INTERVAL = 1.0 -- Time in seconds to wait before retrying to register events.
+local RETRY_INTERVAL = 1.0 -- seconds
+
+-- Buffer for a wanted update when guihooks isn't ready
+local pending_wanted = nil
 
 print(PLUGIN .. " Key.lua LOADED")
 
--- Sends the money value to the UI using the game's guihooks system.
 local function send_to_ui(money)
-    -- Ensure the money value is a number before sending.
     if type(money) ~= "number" then
         money = tonumber(money)
     end
@@ -29,18 +26,14 @@ local function send_to_ui(money)
         return
     end
 
-    -- Check if the guihooks system is available before trying to use it.
     if type(guihooks) == "table" and type(guihooks.trigger) == "function" then
-        -- Trigger a custom event that the JavaScript part of the UI is listening for.
         guihooks.trigger("EconomyUI_Update", { money = money })
         print(PLUGIN .. " Money sent to UI:", money)
     else
-        -- If guihooks isn't ready yet, log a warning. The onUpdate function will retry.
         print(PLUGIN .. " WARNING: guihooks not available, will retry on next frame")
     end
 end
 
--- Sends the selected language code to the UI.
 local function send_lang_to_ui(langCode)
     if type(guihooks) == "table" and type(guihooks.trigger) == "function" then
         guihooks.trigger("LanguageUpdate", langCode)
@@ -50,26 +43,71 @@ local function send_lang_to_ui(langCode)
     end
 end
 
--- Event handler for when the client receives a 'receiveMoney' event from the server.
+-- ========================================================================= --
+-- Wanted handler: robust parsing + buffering if guihooks not available
+-- ========================================================================= --
+local function on_receive_wanted_status(payload)
+    print(PLUGIN .. " Received wanted payload from server. Type: " .. type(payload) .. ", Value: " .. tostring(payload))
+    local wantedTime = nil
+
+    if type(payload) == "string" then
+        local success, decoded = pcall(json.decode, payload)
+        if success and type(decoded) == "table" and decoded.wantedTime ~= nil then
+            wantedTime = tonumber(decoded.wantedTime)
+        else
+            wantedTime = tonumber(payload)
+        end
+    elseif type(payload) == "number" then
+        wantedTime = payload
+    elseif type(payload) == "table" and payload.wantedTime ~= nil then
+        wantedTime = tonumber(payload.wantedTime)
+    end
+
+    if wantedTime ~= nil then
+        wantedTime = math.max(0, math.floor(wantedTime))
+        print(PLUGIN .. string.format(" Successfully parsed wantedTime: %d", wantedTime))
+
+        -- Data to send to UI, formatted as a table for consistency
+        local ui_payload = { wantedTime = wantedTime }
+
+        -- Try to send immediately if guihooks available; otherwise buffer
+        if type(guihooks) == "table" and type(guihooks.trigger) == "function" then
+            guihooks.trigger("EconomyUI_WantedUpdate", ui_payload)
+            print(PLUGIN .. " Wanted sent to UI (immediate):", wantedTime)
+        else
+            pending_wanted = ui_payload
+            print(PLUGIN .. " guihooks not available — buffered wantedTime:", wantedTime)
+        end
+    else
+        print(PLUGIN .. " ERROR: Could not parse wantedTime from payload:", tostring(payload))
+    end
+end
+
+function setPlayerLanguage(langCode)
+    print(PLUGIN, "Received language change request from UI:", langCode)
+    if type(TriggerServerEvent) == "function" then
+        TriggerServerEvent('setPlayerLanguage', langCode)
+    else
+        print(PLUGIN, "ERROR: TriggerServerEvent not available")
+    end
+end
+
+_G.setPlayerLanguage = setPlayerLanguage
+
 local function on_receive_money(payload)
     print(PLUGIN .. " Received payload from server. Type: " .. type(payload) .. ", Value: " .. tostring(payload))
     local money = nil
 
-    -- The payload from the server can be in different formats (number, JSON string),
-    -- so this block robustly parses it.
     if type(payload) == "number" then
         money = payload
     elseif type(payload) == "string" then
-        -- Try to decode the string as JSON.
         local success, decoded = pcall(json.decode, payload)
-
         if success and type(decoded) == "table" and decoded.money ~= nil then
             money = tonumber(decoded.money)
             if money == nil then
                  print(PLUGIN .. " WARNING: 'money' field was not a number. Value: " .. tostring(decoded.money))
             end
         else
-            -- If JSON decoding fails, try a direct conversion to a number as a fallback.
             print(PLUGIN .. " JSON decoding failed or data structure is incorrect. Attempting direct number conversion.")
             money = tonumber(payload)
         end
@@ -77,7 +115,6 @@ local function on_receive_money(payload)
         money = tonumber(payload.money)
     end
 
-    -- If money was successfully parsed, send it to the UI.
     if money then
         print(PLUGIN .. " Successfully parsed money:", money)
         send_to_ui(money)
@@ -86,43 +123,26 @@ local function on_receive_money(payload)
     end
 end
 
--- Event handler for when the client receives a language update.
 local function on_receive_language(langCode)
     print(PLUGIN .. " Received language update from server:", langCode)
     send_lang_to_ui(langCode)
 end
 
--- This function is called FROM the JavaScript UI to send an event TO the server.
-function setPlayerLanguage(langCode)
-    print(PLUGIN, "Received language change request from UI:", langCode)
-    
-    -- Use the global TriggerServerEvent function to communicate with the server script.
-    if type(TriggerServerEvent) == "function" then
-        TriggerServerEvent('setPlayerLanguage', langCode)
-    else
-        print(PLUGIN, "ERROR: TriggerServerEvent not available")
-    end
-end
-
--- Expose the function globally so the UI's `bngApi.engineLua` can call it.
-_G.setPlayerLanguage = setPlayerLanguage
-
--- A function to register the event handlers that listen for messages from the server.
 local function try_register()
-    if registered_events then return end -- Don't register more than once.
-    -- The AddEventHandler function might not be available immediately when the script loads.
+    if registered_events then return end
     if type(AddEventHandler) == "function" then
         AddEventHandler("receiveMoney", on_receive_money)
         AddEventHandler("receiveLanguage", on_receive_language)
+
+        -- This is the event coming from the server for wanted status
+        AddEventHandler("updateWantedStatus", on_receive_wanted_status)
+
         registered_events = true
         print(PLUGIN .. " Registered GE event handlers")
     end
 end
 
--- This function is called by the game engine on every frame.
 function M.onUpdate(dt)
-    -- If events aren't registered yet, keep trying on a timer.
-    -- This ensures the script works even if it loads before the game's event system is ready.
     if not registered_events then
         retry_acc = retry_acc + (dt or 0)
         if retry_acc >= RETRY_INTERVAL then
@@ -130,9 +150,18 @@ function M.onUpdate(dt)
             try_register()
         end
     end
+
+    -- Every frame we try to flush pending wanted update if guihooks became available
+    if pending_wanted then
+        if type(guihooks) == "table" and type(guihooks.trigger) == "function" then
+            guihooks.trigger("EconomyUI_WantedUpdate", pending_wanted)
+            print(PLUGIN .. " Flushed pending wantedTime to UI onUpdate:", pending_wanted.wantedTime)
+            pending_wanted = nil
+        end
+    end
 end
 
--- Attempt to register immediately on script load.
+-- try to register immediately
 try_register()
 
 return M
