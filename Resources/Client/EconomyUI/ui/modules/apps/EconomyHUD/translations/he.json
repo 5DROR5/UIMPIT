@@ -1,7 +1,13 @@
 {
     "open_ui": "💰 פתח",
     "close_ui": "❌ סגור",
-    "balance_title": "יתרה נוכחית",
+    "balance_title": "יתרה",
     "currency_symbol": "₪",
-    "language_label": "שפה"
+    "wanted_label": "מבוקש",
+    "language_label": "שפה",
+    "language_flags": {
+        "en": "🇺🇸",
+        "he": "🇮🇱",
+        "ar": "🇸🇦"
+    }
 }
