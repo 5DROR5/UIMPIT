@@ -1,156 +1,150 @@
-# UIMPIT
-Initial release of the mod
-## Important clarification!
-Indeed, the mod I'm posting works perfectly fine, but I'm not a professional programmer - I relied heavily on artificial intelligence [after training it to code according to the nuances of BeamMP]. So don't look at this as an example of "perfect programming", I'm almost certain there are cleaner and more efficient methods to code this.
+# 🚓 UIMPIT - Economy & Roleplay Mod
 
-Still, I’m sharing this because there’s a lack of good examples for server ↔ JavaScript communication in BeamMP.  
-I hope this mod can serve as a useful reference, and maybe you’ll find the UI neat enough to reuse.
+A comprehensive **server-side mod for BeamMP** that introduces a **dynamic economy**, **civilian vs. police roleplay mechanics**, and a **highly configurable gameplay experience**.
 
----
+This mod includes:
 
-## ⚙️ Installation
-1. Place the **`EconomyTest`** folder in:
-
-Resources/Server/
-
-2. Place **`EconomyUI.zip`** in:
-
-Resources/Client/
-
-3. Restart your BeamMP server.
-
----
-![EconomyTest UI](2025-09-15_02-10.png)
----
-
-# Overview
-
-## 📢 Two-Way UI & Multilingual Mod
-
-### 🌐 Bi-directional Communication
-Server sends economy data to JS.  
-When the player changes the language in the UI, the client sends it back to the server.
-
-### 🌍 Language Support (i18n)
-Real-time language switching.  
-Currently supports **English, Hebrew, Arabic**.  
-Easy to add new languages by editing the localization files.
-
-### 🚓 Automatic Role Assignment
-Assigns players to roles (Police / Civilian) based on vehicle skins. Can be extended to more roles.
-
-### ☁️ Extensibility
-Add more roles, custom events, or new languages.  
-The structure is clear and designed for easy extension.
+* 🧠 Server-side script
+* 💻 Client-side UI (HUD)
+* ⚙️ Graphical configuration editor
 
 ---
 
-# Detailed Overview
+## ✨ Features
 
-This document provides a comprehensive overview of the EconomyTest mod, its features, and how to use and configure it. It's designed for players, server administrators, and aspiring developers who want to learn from the code.
+### 💰 Dynamic Economy System
 
-## What is this mod?
-
-EconomyTest is a complete, yet easy-to-understand, server-side economy mod for BeamMP. It introduces player accounts, currency, roles, and interactive commands to create a dynamic and engaging gameplay experience. The code is heavily commented to serve as a learning resource for how server-side mods can be built.
-
-## Core Features
-
-*  **Persistent Player Accounts:** Each player has an account tied to their unique ID, with money balances that save automatically and persist across sessions.
-*  **Passive Income:** Players earn a configurable amount of money ($10 per minute by default) just for being active on the server.
-*  **Player-to-Player Transactions:** Securely pay other players using the `/pay` command.
-*  **Dynamic Role System:** Players are automatically assigned the "Police" or "Civilian" role based on their vehicle's skin.  Cops receive a "Welcome, officer!" message     , while civilians get a "Drive safe" message.
-*  **Speeding Bonus:** Civilians are rewarded for risky driving!  Driving above the speed limit (100 km/h by default) for a full minute earns a bonus payout.
-*  **Multi-Language Support:** The UI and server messages support multiple languages (English, Hebrew, and Arabic are included) and can be easily extended.
-*  **Interactive UI/HUD:** A clean, modern UI allows players to see their balance and change their language settings with ease.
-*  **Data Safe-Guards:** Player data is saved "atomically."  This means it writes to a temporary file first before replacing the main data file, which prevents data loss or corruption if the server crashes during a save operation.
-
-## Configuration
-
- You can easily customize the mod by editing the constants at the top of the `Resources/Server/EconomyTest/main.lua` file.
-
-* `MONEY_PER_MINUTE_AMOUNT`: Change the amount of passive income players receive.
-* `AUTOSAVE_INTERVAL_MS`: Adjust how often (in milliseconds) player data is saved.
-* `SPEED_LIMIT_KMH`: Set the speed civilians must exceed to start the speeding bonus.
-* `SPEEDING_COOLDOWN_MS`: Set the cooldown time (in milliseconds) before a player can start another speeding bonus.
-* `PoliceSkins`: This is a very important list.  Add or remove vehicle skin names here to define which cars grant players the "Police" role.
-
-### Customizing Messages and Languages
-
-* **Edit Text:** All server messages can be changed by editing the JSON files in `/Resources/Server/EconomyTest/lang/`.
-* **Add a Language:** To add a new language, create a new `.json` file (e.g., `fr.json`), add it to the `SUPPORTED_LANGS` list in `main.lua`, and add a corresponding UI translation in the client files `EconomyUI.zip\ui\modules\apps\EconomyHUD\translations`.
-
-## UI
-*  Click the "💰 Open" button on your screen to view your balance panel.  Click the globe icon (🌐) to open the language menu and change the UI's language instantly.
-*  Note: Sometimes immediately upon entering the server the UI will display: 0:00 on the screen but it will update immediately when the player's money amount changes. This is a timing issue that any professional developer can easily solve.
-
-## 🎨 Custom CSS Themes
-
-The UI now supports multiple visual styles!  
-You can choose between different CSS themes to customize the look of the HUD.  
-
-Each theme is packaged as a separate ZIP file in the [Releases](../../releases) section.  
-Inside each ZIP you'll find an `app.css` file – just replace the one inside `EconomyUI.zip` with the version you want.
+* Players earn money over time.
+* Ability to pay other players using chat commands (`/pay`).
+* Player data (money, language) is automatically saved.
 
 ---
 
-### Available Themes
+### 🚔 Civilian vs. Police Roleplay
 
-#### 1. Classic (Default)
-The original clean design.
+* **Automatic Role Detection**:
+  The server automatically assigns players to *Civilian* or *Police* roles based on their vehicle’s skin.
 
-![Classic](Classic-Default.png)
+* **Wanted System**:
+  Civilians become *wanted* by performing actions like speeding or reckless driving (zigzagging).
 
----
+* **High-Stakes Chases**:
 
-#### 2. Bar Style
-A modern bar-style HUD.
+  * Wanted civilians earn bonus money for driving near police officers.
+  * Police officers earn money for pursuing wanted players.
 
-![Bar](bar.png)
+* **Busting Mechanic**:
+  Police can “bust” wanted civilians by staying close while they are stopped or driving slowly — earning a significant bonus.
 
-**Download:** [EconomyUI-css-Bar-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-Bar-1.0.0.zip)
-
----
-
-#### 3. CRT Retro
-A vintage CRT monitor look.
-
-![CRT](CRT.png)
-
-**Download:** [EconomyUI-css-CRT-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-CRT-1.0.0.zip)
+* **Evasion Bonus**:
+  Civilians who successfully evade police and survive the wanted timer receive a large reward.
 
 ---
 
-#### 4. Round Design
-Smooth rounded panels for a softer look.
+### 🧭 Modern In-Game UI (HUD)
 
-![Round](round.png)
+* Clean, toggleable interface showing the player’s money and wanted status.
+* Displays a live “WANTED” timer during pursuits.
+* **Full multi-language support**:
 
-**Download:** [EconomyUI-css-round-1.0.0.zip](../../releases/download/v1.0.0/EconomyUI-css-round-1.0.0.zip)
-
----
-
-### 🔧 How to Apply a Theme
-1. Download the ZIP file of your preferred theme.  
-2. Open the ZIP and extract the `app.css` file.  
-3. Replace the existing `app.css` inside `EconomyUI.zip\ui\modules\apps\EconomyHUD\`.  
-4. Restart the game/server and enjoy your new style!
+  * Change language directly in-game (English, Hebrew, Arabic supported).
+  * UI automatically adjusts for RTL languages.
 
 ---
 
-## Mod Architecture
+### ⚙️ Easy Configuration
 
-This mod is split into three distinct parts, which is a common and effective pattern:
+* Every gameplay variable (payouts, timers, speeds, distances, etc.) can be easily configured in a single **`config.json`** file.
+* Includes a **graphical Configuration Editor** tool to edit settings safely and intuitively.
 
-1. **Server (`main.lua`):** This is the authoritative core. It handles all logic, calculations, data storage (`players.DATA`), and game rules. It is the single source of truth for everything.
-2. **Client (`key.lua`):** A lightweight bridge. Its only job is to pass messages between the server and the UI. It listens for events from the server (like `receiveMoney`) and pushes the data to the UI, and it listens for requests from the UI (like `setPlayerLanguage`) and sends them to the server.
-3. **UI (`app.js`, `app.html`, `app.css`):** The visual front-end built with AngularJS. It is responsible only for displaying information and capturing user input. It holds no game logic itself and relies entirely on the client script for data.
+---
 
+## 🚀 Components
 
-## Acknowledgments
+| Component              | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
+| **`main.lua`**         | The core server script — manages all game logic, player data, and events. |
+| **`EconomyUI.zip`**    | The in-game interface (HUD) that displays real-time information.          |
+| **`config_editor.py`** | A standalone desktop configuration editor for Windows and Linux.          |
+
+---
+
+## 🧩 Configuration Editor
+
+A standalone **desktop application** (Windows/Linux) that allows you to modify the mod’s core settings with a GUI — no coding required.
+
+If you don’t know how to code, this tool lets you control all main functions and variables of the mod safely, enabling/disabling or modifying features with a few clicks.
+
+### 🪟 Windows Version
+
+The executable (`UIMPIT-Config-Editor.exe`) is provided within the release file.
+
+### 🐧 Build it Yourself (Windows/Linux)
+
+If you prefer to build the editor manually:
+
+#### 📋 Prerequisites
+
+1. **Python 3** installed and added to your system PATH.
+2. Required packages:
+
+```bash
+pip install PySide6 PyInstaller
+```
+
+#### 📁 Setup
+
+1. Create a file in:
+
+```
+Resources/Server/EconomyTest/config_editor.py
+```
+
+2. Copy the content from the repository’s `config_editor.py`.
+
+#### ⚙️ Build Commands
+
+##### 🪟 On Windows:
+
+```bash
+pyinstaller --onefile --windowed --name "UIMPIT-Config-Editor" --add-data "lang;lang" config_editor.py
+```
+
+##### 🐧 On Linux:
+
+```bash
+pyinstaller --onefile --noconsole --name "UIMPIT-Config-Editor" --add-data "lang:lang" config_editor.py
+```
+
+---
+
+### 📦 Deployment
+
+After building, a `dist` folder will be created. Inside, you’ll find the executable file:
+`UIMPIT-Config-Editor.exe` *(Windows)* or `UIMPIT-Config-Editor` *(Linux)*
+
+> ⚠️ **Important:**
+> Move the generated executable to the main server directory:
+>
+> ```
+> Resources/Server/EconomyTest/
+> ```
+>
+> The file must be in the same directory as:
+>
+> * `config.json`
+> * `lang/` folder
+
+---
+
+## 🧠 Credits
 
 Special thanks to **Beams Of Norway** who brought me the code to test the speed
 
-## License
+
+---
+
+## 📜 License
 © 2025 5DROR5
 
 You are free to use, modify, and distribute this mod for any purpose, including commercial use, 
