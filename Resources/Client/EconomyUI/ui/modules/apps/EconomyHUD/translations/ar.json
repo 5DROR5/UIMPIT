@@ -1,7 +1,13 @@
 {
-  "open_ui": "💰 فتح",
-  "close_ui": "❌ إغلاق",
-  "balance_title": "الرصيد",
-  "currency_symbol": "ر.س",
-  "language_label": "اللغة"
+    "open_ui": "💰 فتح",
+    "close_ui": "❌ أغلق",
+    "balance_title": "الرصيد",
+    "currency_symbol": "﷼",
+    "wanted_label": "مطلوب",
+    "language_label": "لغة",
+    "language_flags": {
+        "en": "🇺🇸",
+        "he": "🇮🇱",
+        "ar": "🇸🇦"
+    }
 }
