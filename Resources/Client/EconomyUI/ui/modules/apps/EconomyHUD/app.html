@@ -1,31 +1,41 @@
 <div id="economy-hud-container" class="economy-app-root">
   <link type="text/css" rel="stylesheet" href="/ui/modules/apps/EconomyHUD/app.css"/>
+  
+  <div class="main-hud-panel">
+      
+      <div class="hud-row hud-row-toggle">
+          
+          <div class="economy-ui-toggle" ng-click="toggleUI()">
+              <span ng-if="!isUIOpen">{{ text.open_ui }}</span>
+              <span ng-if="isUIOpen">{{ text.close_ui }}</span>
+          </div>
+          
+          <div class="language-wrapper">
+              <div class="language-icon" ng-click="toggleLangMenu()" title="{{ text.language_label }}">
+                  🌐
+              </div>
+              <ul class="language-menu" ng-class="{'open': isLangOpen, 'closed': !isLangOpen}">
+                  <li ng-click="setLanguage('en')">{{ text.language_flags.en }}</li>
+                  <li ng-click="setLanguage('he')">{{ text.language_flags.he }}</li>
+                  <li ng-click="setLanguage('ar')">{{ text.language_flags.ar }}</li>
+              </ul>
+          </div>
 
-  <div class="economy-ui-toggle" ng-click="toggleUI()">
-    <span ng-if="!isUIOpen">{{ text.open_ui }}</span>
-    <span ng-if="isUIOpen">{{ text.close_ui }}</span>
-  </div>
-
-  <div class="economy-ui-container" ng-class="{'open': isUIOpen, 'closed': !isUIOpen}">
-    <div class="economy-header">
-      <h1>{{ text.balance_title }}</h1>
-    </div>
-
-    <div class="balance-display">
-      <span class="currency-symbol">{{ text.currency_symbol }}</span>
-      <span class="current-balance">{{ balance | number:2 }}</span>
-    </div>
-
-    <div class="language-wrapper">
-      <div class="language-icon" ng-click="toggleLangMenu()" title="{{ text.language_label }}">
-        🌐
       </div>
-
-      <ul class="language-menu" ng-class="{'open': isLangOpen, 'closed': !isLangOpen}">
-        <li ng-click="setLanguage('en')">{{ text.language_flags.en }}</li>
-        <li ng-click="setLanguage('he')">{{ text.language_flags.he }}</li>
-        <li ng-click="setLanguage('ar')">{{ text.language_flags.ar }}</li>
-      </ul>
-    </div>
+      
+      <div class="hud-row economy-data-row" ng-class="{'open': isUIOpen, 'closed': !isUIOpen}">
+          <div class="balance-display">
+              <span class="currency-symbol">{{ text.currency_symbol }}</span>
+              <span class="current-balance">{{ balance | number:2 }}</span>
+          </div>
+      </div>
+      
+      <div class="hud-row wanted-timer-row" ng-if="wantedTime > 0" ng-class="{'open': isUIOpen, 'closed': !isUIOpen}">
+          <div id="floating-wanted-timer">
+              <span class="label">🚨 {{ text.wanted_label }}</span>
+              <span class="time">{{ formatTime(wantedTime) }}</span>
+          </div>
+      </div>
+      
   </div>
 </div>
