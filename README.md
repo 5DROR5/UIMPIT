@@ -37,7 +37,18 @@ A comprehensive server-side mod for **BeamMP** that introduces a dynamic economy
 
 * All gameplay variables (payouts, timers, speeds, distances) can be edited in a single `config.json` file.
 * Includes a **Configuration Editor** tool for easy modification without touching the code.
+---
 
+## ⚙️ Installation
+1. Place the **`EconomyTest`** folder in:
+
+Resources/Server/
+
+2. Place **`EconomyUI.zip`** in:
+
+Resources/Client/
+
+3. Restart your BeamMP server.
 ---
 
 ## 🧩 Configuration Editor
