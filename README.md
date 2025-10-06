@@ -1,79 +1,67 @@
-# 🚓 UIMPIT - Economy & Roleplay Mod
+# UIMPIT - Economy & Roleplay Mod
 
-A comprehensive **server-side mod for BeamMP** that introduces a **dynamic economy**, **civilian vs. police roleplay mechanics**, and a **highly configurable gameplay experience**.
-
-This mod includes:
-
-* 🧠 Server-side script
-* 💻 Client-side UI (HUD)
-* ⚙️ Graphical configuration editor
+A comprehensive server-side mod for **BeamMP** that introduces a dynamic economy, civilian vs. police roleplay mechanics, and a highly configurable gameplay experience. This mod includes a server-side script, a client-side UI (HUD), and a graphical configuration editor.
 
 ---
 
 ## ✨ Features
 
-### 💰 Dynamic Economy System
+### 🪙 Dynamic Economy System
 
 * Players earn money over time.
 * Ability to pay other players using chat commands (`/pay`).
-* Player data (money, language) is automatically saved.
+* Player data (money, language) is saved automatically.
 
----
+### 🚓 Civilian vs. Police Roleplay
 
-### 🚔 Civilian vs. Police Roleplay
+* **Automatic Role Detection:** The server automatically assigns players to “Civilian” or “Police” roles based on their vehicle’s skin.
+* **Wanted System:** Civilians can become wanted by performing illegal actions like speeding or reckless driving.
+* **High-Stakes Chases:**
 
-* **Automatic Role Detection**:
-  The server automatically assigns players to *Civilian* or *Police* roles based on their vehicle’s skin.
+  * Wanted civilians earn bonus money for driving near police.
+  * Police earn money for pursuing wanted criminals.
+* **Busting Mechanic:** Police can “bust” wanted civilians by staying close while the civilian is stopped or moving slowly.
+* **Evasion Bonus:** Civilians who evade pursuit and survive the wanted timer earn large rewards.
 
-* **Wanted System**:
-  Civilians become *wanted* by performing actions like speeding or reckless driving (zigzagging).
+### 💻 Modern In-Game UI (HUD)
 
-* **High-Stakes Chases**:
+* Clean, toggleable interface to show/hide economy and wanted status.
+* Displays current money balance.
+* Shows a **WANTED** timer when being pursued.
+* **Multi-language Support:**
 
-  * Wanted civilians earn bonus money for driving near police officers.
-  * Police officers earn money for pursuing wanted players.
-
-* **Busting Mechanic**:
-  Police can “bust” wanted civilians by staying close while they are stopped or driving slowly — earning a significant bonus.
-
-* **Evasion Bonus**:
-  Civilians who successfully evade police and survive the wanted timer receive a large reward.
-
----
-
-### 🧭 Modern In-Game UI (HUD)
-
-* Clean, toggleable interface showing the player’s money and wanted status.
-* Displays a live “WANTED” timer during pursuits.
-* **Full multi-language support**:
-
-  * Change language directly in-game (English, Hebrew, Arabic supported).
-  * UI automatically adjusts for RTL languages.
-
----
+  * Change language in-game (English, Hebrew, Arabic supported).
+  * Automatically adjusts for Right-to-Left (RTL) languages.
 
 ### ⚙️ Easy Configuration
 
-* Every gameplay variable (payouts, timers, speeds, distances, etc.) can be easily configured in a single **`config.json`** file.
-* Includes a **graphical Configuration Editor** tool to edit settings safely and intuitively.
-
----
-
-## 🚀 Components
-
-| Component              | Description                                                               |
-| ---------------------- | ------------------------------------------------------------------------- |
-| **`main.lua`**         | The core server script — manages all game logic, player data, and events. |
-| **`EconomyUI.zip`**    | The in-game interface (HUD) that displays real-time information.          |
-| **`config_editor.py`** | A standalone desktop configuration editor for Windows and Linux.          |
+* All gameplay variables (payouts, timers, speeds, distances) can be edited in a single `config.json` file.
+* Includes a **Configuration Editor** tool for easy modification without touching the code.
 
 ---
 
 ## 🧩 Configuration Editor
 
-A **desktop application** (Windows/Linux) that allows you to modify the mod’s core settings with a GUI — no coding required.
+The configuration editor (`config_editor.py`) is a standalone desktop application that allows you to easily modify all core settings of the mod without editing code manually.
 
-If you don’t know how to code, this tool lets you control all main functions and variables of the mod safely, enabling/disabling or modifying features with a few clicks.
+To use the configuration editor, you must have **Python 3** installed on your system.
+
+![UIMPIT Configuration Editor](png/UIMPIT%20Configuration%20Editor.png)
+> 💡 You can download Python from the official website: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+
+---
+
+## 🧠 How to Use the Configuration Editor
+
+> ⚠️ The configuration editor (`config_editor.py`) must be in the same folder as `config.json` and the `lang` folder.  
+> On Windows you can double-click it to run, or run from the terminal:  
+> ```bash
+> python config_editor.py
+> ```  
+> On Linux, run it from the terminal:  
+> ```bash
+> python3 config_editor.py
+> ```
 
 
 ## 🧠 Credits
