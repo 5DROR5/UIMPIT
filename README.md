@@ -1,7 +1,9 @@
 # UIMPIT - Economy & Roleplay Mod
 
 A comprehensive server-side mod for **BeamMP** that introduces a dynamic economy, civilian vs. police roleplay mechanics, and a highly configurable gameplay experience. This mod includes a server-side script, a client-side UI (HUD), and a graphical configuration editor.
+
 ![UIMPIT Screenshot](png/Screenshot.png)
+
 ---
 
 ## ✨ Features
@@ -58,9 +60,9 @@ Resources/Client/
 
 The configuration editor (`config_editor.py`) is a standalone desktop application that allows you to easily modify all core settings of the mod without editing code manually.
 
-To use the configuration editor, you must have **Python 3** installed on your system.
-
 ![UIMPIT Configuration Editor](png/UIMPIT%20Configuration%20Editor.png)
+
+To use the configuration editor, you must have **Python 3** installed on your system.
 > 💡 You can download Python from the official website: [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 ---
