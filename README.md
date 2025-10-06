@@ -71,7 +71,7 @@ This mod includes:
 
 ## 🧩 Configuration Editor
 
-A standalone **desktop application** (Windows/Linux) that allows you to modify the mod’s core settings with a GUI — no coding required.
+A **desktop application** (Windows/Linux) that allows you to modify the mod’s core settings with a GUI — no coding required.
 
 If you don’t know how to code, this tool lets you control all main functions and variables of the mod safely, enabling/disabling or modifying features with a few clicks.
 
