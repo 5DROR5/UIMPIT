@@ -1,7 +1,7 @@
 # UIMPIT - Economy & Roleplay Mod
 
 A comprehensive server-side mod for **BeamMP** that introduces a dynamic economy, civilian vs. police roleplay mechanics, and a highly configurable gameplay experience. This mod includes a server-side script, a client-side UI (HUD), and a graphical configuration editor.
-
+![UIMPIT Screenshot](png/Screenshot.png)
 ---
 
 ## ✨ Features
@@ -25,13 +25,16 @@ A comprehensive server-side mod for **BeamMP** that introduces a dynamic economy
 
 ### 💻 Modern In-Game UI (HUD)
 
+![UIMPIT ui](png/ui.png)
+
 * Clean, toggleable interface to show/hide economy and wanted status.
 * Displays current money balance.
 * Shows a **WANTED** timer when being pursued.
-* **Multi-language Support:**
 
-  * Change language in-game (English, Hebrew, Arabic supported).
-  * Automatically adjusts for Right-to-Left (RTL) languages.
+### Multi-language Support:
+
+* Change language in-game (English, Hebrew, Arabic supported).
+* Automatically adjusts for Right-to-Left (RTL) languages.
 
 ### ⚙️ Easy Configuration
 
