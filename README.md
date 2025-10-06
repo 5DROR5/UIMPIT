@@ -75,67 +75,6 @@ A standalone **desktop application** (Windows/Linux) that allows you to modify t
 
 If you don’t know how to code, this tool lets you control all main functions and variables of the mod safely, enabling/disabling or modifying features with a few clicks.
 
-### 🪟 Windows Version
-
-The executable (`UIMPIT-Config-Editor.exe`) is provided within the release file.
-
-### 🐧 Build it Yourself (Windows/Linux)
-
-If you prefer to build the editor manually:
-
-#### 📋 Prerequisites
-
-1. **Python 3** installed and added to your system PATH.
-2. Required packages:
-
-```bash
-pip install PySide6 PyInstaller
-```
-
-#### 📁 Setup
-
-1. Create a file in:
-
-```
-Resources/Server/EconomyTest/config_editor.py
-```
-
-2. Copy the content from the repository’s `config_editor.py`.
-
-#### ⚙️ Build Commands
-
-##### 🪟 On Windows:
-
-```bash
-pyinstaller --onefile --windowed --name "UIMPIT-Config-Editor" --add-data "lang;lang" config_editor.py
-```
-
-##### 🐧 On Linux:
-
-```bash
-pyinstaller --onefile --noconsole --name "UIMPIT-Config-Editor" --add-data "lang:lang" config_editor.py
-```
-
----
-
-### 📦 Deployment
-
-After building, a `dist` folder will be created. Inside, you’ll find the executable file:
-`UIMPIT-Config-Editor.exe` *(Windows)* or `UIMPIT-Config-Editor` *(Linux)*
-
-> ⚠️ **Important:**
-> Move the generated executable to the main server directory:
->
-> ```
-> Resources/Server/EconomyTest/
-> ```
->
-> The file must be in the same directory as:
->
-> * `config.json`
-> * `lang/` folder
-
----
 
 ## 🧠 Credits
 
