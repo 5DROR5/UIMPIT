@@ -54,6 +54,11 @@ Resources/Server/
 Resources/Client/
 
 3. Restart your BeamMP server.
+
+### 📦 JSON Dependency
+If you are building the mod directly from the repository, make sure to include the JSON libraries `dkjson.lua` and `json.lua` next to your Lua files.  
+The mod depends on these files.
+
 ---
 
 ## 🧩 Configuration Editor
